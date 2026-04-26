@@ -65,16 +65,16 @@ export default function TopNavbar() {
   };
 
   return (
-    <header className="sticky top-0 z-50 bg-card/95 backdrop-blur border-b border-border">
+    <header className="sticky top-0 z-50 bg-black border-b border-gray-800">
       {/* Row 1: Logo + Theme Toggle + Balance + Account */}
       <div className="flex items-center h-12 px-4 max-w-[1920px] mx-auto">
         {/* Logo */}
         <div className="flex items-center gap-2 shrink-0">
-          <div className="w-7 h-7 rounded-lg gradient-primary flex items-center justify-center">
-            <Cpu className="w-3.5 h-3.5 text-primary-foreground" />
+          <div className="w-7 h-7 rounded-lg bg-blue-600 flex items-center justify-center">
+            <Cpu className="w-3.5 h-3.5 text-white" />
           </div>
-          <span className="font-bold text-foreground text-sm">
-            RAMZ<span className="text-primary">FX</span>
+          <span className="font-bold text-white text-sm">
+            RAMZ<span className="text-blue-500">FX</span>
           </span>
           <div className="ml-1">
             <SocialIcons />
@@ -87,18 +87,18 @@ export default function TopNavbar() {
           
           {activeAccount && (
             <div className="flex items-center gap-2">
-              <div className="flex items-center gap-1.5 bg-muted rounded-lg px-3 py-1.5">
+              <div className="flex items-center gap-1.5 bg-gray-900 rounded-lg px-3 py-1.5">
                 {/* Show American flag for USD real accounts */}
                 {!activeAccount.is_virtual && activeAccount.currency === 'USD' ? (
                   <span className="text-sm" role="img" aria-label="US Dollar">
                     🇺🇸
                   </span>
                 ) : (
-                  <span className="text-[10px] text-muted-foreground">
+                  <span className="text-[10px] text-gray-400">
                     {activeAccount.is_virtual ? '💲' : '💵'}
                   </span>
                 )}
-                <span className={`font-mono text-sm font-bold ${balance >= 0 ? 'text-profit' : 'text-loss'}`}>
+                <span className={`font-mono text-sm font-bold ${balance >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                   ${balance.toFixed(2)}
                 </span>
               </div>
@@ -106,20 +106,20 @@ export default function TopNavbar() {
               {activeAccount.is_virtual && (
                 <AlertDialog>
                   <AlertDialogTrigger asChild>
-                    <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground">
+                    <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-gray-400 hover:text-white bg-transparent hover:bg-gray-800">
                       <RefreshCw className="w-3.5 h-3.5" />
                     </Button>
                   </AlertDialogTrigger>
-                  <AlertDialogContent>
+                  <AlertDialogContent className="bg-black border border-gray-800 text-white">
                     <AlertDialogHeader>
-                      <AlertDialogTitle>Reset Demo Balance</AlertDialogTitle>
-                      <AlertDialogDescription>
+                      <AlertDialogTitle className="text-white">Reset Demo Balance</AlertDialogTitle>
+                      <AlertDialogDescription className="text-gray-400">
                         Reset account balance to $10,000? This cannot be undone.
                       </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
-                      <AlertDialogCancel>Cancel</AlertDialogCancel>
-                      <AlertDialogAction onClick={handleResetBalance}>Reset Balance</AlertDialogAction>
+                      <AlertDialogCancel className="bg-gray-800 text-white border-gray-700 hover:bg-gray-700">Cancel</AlertDialogCancel>
+                      <AlertDialogAction onClick={handleResetBalance} className="bg-blue-600 hover:bg-blue-700">Reset Balance</AlertDialogAction>
                     </AlertDialogFooter>
                   </AlertDialogContent>
                 </AlertDialog>
@@ -127,7 +127,7 @@ export default function TopNavbar() {
 
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="sm" className="h-8 px-2 text-xs gap-1">
+                  <Button variant="ghost" size="sm" className="h-8 px-2 text-xs gap-1 text-white bg-transparent hover:bg-gray-800">
                     {/* Show flag next to account name in trigger */}
                     {!activeAccount.is_virtual && activeAccount.currency === 'USD' && (
                       <span className="text-sm">🇺🇸</span>
@@ -136,7 +136,7 @@ export default function TopNavbar() {
                     <ChevronDown className="w-3 h-3" />
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuContent align="end" className="w-56 bg-black border border-gray-800 text-white">
                   {accounts.map(acc => {
                     const isRealLocked = !acc.is_virtual && !isUnlocked;
                     const currencyFlag = !acc.is_virtual ? getCurrencyFlag(acc.currency) : '🎮';
@@ -151,17 +151,17 @@ export default function TopNavbar() {
                           }
                           switchAccount(acc.loginid);
                         }}
-                        className={`${acc.loginid === activeAccount.loginid ? 'bg-accent' : ''} ${isRealLocked ? 'opacity-50' : ''}`}
+                        className={`${acc.loginid === activeAccount.loginid ? 'bg-gray-800' : ''} ${isRealLocked ? 'opacity-50' : ''} text-white focus:bg-gray-800 focus:text-white`}
                       >
                         <span className="mr-2 text-base">
                           {acc.is_virtual ? '🎮' : currencyFlag}
                         </span>
                         {acc.loginid} ({acc.currency})
-                        {isRealLocked && <span className="ml-auto text-[9px] text-warning">Locked</span>}
+                        {isRealLocked && <span className="ml-auto text-[9px] text-yellow-500">Locked</span>}
                       </DropdownMenuItem>
                     );
                   })}
-                  <DropdownMenuItem onClick={logout} className="text-destructive">
+                  <DropdownMenuItem onClick={logout} className="text-red-400 focus:text-red-400 focus:bg-gray-800">
                     <LogOut className="mr-2 h-3.5 w-3.5" /> Logout
                   </DropdownMenuItem>
                 </DropdownMenuContent>
@@ -171,68 +171,38 @@ export default function TopNavbar() {
         </div>
       </div>
 
-      {/* Row 2: Navigation links with Horizontal Scroll & Fixed Height */}
-      <div className="relative border-t border-border/50">
-        {/* Gradient shadows for scroll indication */}
-        <div className="absolute left-0 top-0 bottom-0 w-8 bg-gradient-to-r from-background to-transparent pointer-events-none z-10 opacity-0 lg:opacity-100"></div>
-        <div className="absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-background to-transparent pointer-events-none z-10 opacity-0 lg:opacity-100"></div>
-        
+      {/* Row 2: Navigation links with black background, blue links, white text/icons */}
+      <div className="border-t border-gray-800 bg-black">
         {/* Scrollable container */}
-        <div className="overflow-x-auto overflow-y-visible scrollbar-thin scrollbar-thumb-primary/20 scrollbar-track-transparent hover:scrollbar-thumb-primary/40">
-          <nav className="flex items-center gap-0.5 px-4 min-w-max h-[42px] max-w-[1920px] mx-auto">
+        <div className="overflow-x-auto overflow-y-visible scrollbar-thin scrollbar-thumb-gray-700 scrollbar-track-transparent hover:scrollbar-thumb-gray-600">
+          <nav className="flex items-center gap-0 px-4 min-w-max h-10 max-w-[1920px] mx-auto">
             {navItems.map((item, index) => {
-              // Different gradient combinations for active state icons
-              const getIconGradient = () => {
-                const gradients = [
-                  'from-blue-500 to-pink-500',
-                  'from-pink-500 to-purple-500',
-                  'from-blue-400 to-pink-400',
-                  'from-purple-500 to-pink-500',
-                  'from-blue-600 to-pink-600',
-                  'from-sky-500 to-pink-500',
-                  'from-indigo-500 to-pink-500',
-                ];
-                return gradients[index % gradients.length];
-              };
-
               return (
                 <NavLink
                   key={item.url}
                   to={item.url}
                   end={item.url === '/'}
                   className={({ isActive }) => `
-                    group relative flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-medium
+                    group relative flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[10px] font-medium
                     transition-all duration-200 whitespace-nowrap shrink-0
-                    border border-transparent hover:border-primary/20
+                    border-r border-gray-800 last:border-r-0
+                    mx-0
                     ${isActive 
-                      ? 'bg-gradient-to-r from-blue-500/15 to-pink-500/15 text-transparent bg-clip-text shadow-sm border-primary/20' 
-                      : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                      ? 'bg-blue-600 text-white' 
+                      : 'bg-transparent text-gray-400 hover:bg-gray-900 hover:text-white'
                     }
                   `}
-                  activeClassName="!bg-gradient-to-r !from-blue-500/15 !to-pink-500/15"
                 >
                   {({ isActive }) => (
                     <>
                       <item.icon 
                         className={`
-                          w-3.5 h-3.5 transition-all duration-200
-                          ${isActive 
-                            ? `bg-gradient-to-r ${getIconGradient()} bg-clip-text text-transparent` 
-                            : 'text-muted-foreground group-hover:text-pink-500 group-hover:scale-110'
-                          }
+                          w-3 h-3 transition-all duration-200
+                          ${isActive ? 'text-white' : 'text-gray-400 group-hover:text-white'}
                         `}
                       />
-                      <span className={`
-                        relative transition-all duration-200
-                        ${isActive 
-                          ? 'bg-gradient-to-r from-blue-500 to-pink-500 bg-clip-text text-transparent font-semibold' 
-                          : 'group-hover:text-pink-500'
-                        }
-                      `}>
+                      <span className="transition-all duration-200">
                         {item.title}
-                        {!isActive && (
-                          <span className="absolute -bottom-1 left-0 w-0 h-0.5 bg-gradient-to-r from-blue-500 to-pink-500 transition-all duration-300 group-hover:w-full rounded-full"></span>
-                        )}
                       </span>
                     </>
                   )}
@@ -244,4 +214,4 @@ export default function TopNavbar() {
       </div>
     </header>
   );
-            }
+    }
