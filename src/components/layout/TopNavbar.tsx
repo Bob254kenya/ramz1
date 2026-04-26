@@ -21,7 +21,7 @@ import ThemeToggle from './ThemeToggle';
 
 const navItems = [
   { title: 'Dashboard', url: '/', icon: LayoutDashboard },
-  { title: 'Ultimate 💥 2026-2027 Bot', url: '/chart', icon: Activity },
+  { title: 'Ultimate Bots', url: '/chart', icon: Activity },
   { title: 'Ramzfx Analysistool', url: '/markets', icon: BarChart3 },
   { title: 'Free Bots', url: '/smart-bot', icon: Zap },
   { title: 'Advanced Tool $ Speed Bot', url: '/auto-trade', icon: Bot },
@@ -183,7 +183,7 @@ export default function TopNavbar() {
                   to={item.url}
                   end={item.url === '/'}
                   className={({ isActive }) => `
-                    group relative flex items-center gap-2.9 px-3 py-1.5 text-[4px] font-bold
+                    group relative flex items-center gap-3.9 px-3 py-1.5 text-[4px] font-bold
                     transition-all duration-300 ease-out transform
                     whitespace-nowrap shrink-0
                     border border-transparent rounded-[5%]
