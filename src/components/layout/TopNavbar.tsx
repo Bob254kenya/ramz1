@@ -29,6 +29,24 @@ const navItems = [
   { title: 'Multi-Strategy Bot', url: '/settings', icon: Settings },
 ];
 
+// Helper function to get currency flag
+const getCurrencyFlag = (currency: string) => {
+  const flags: Record<string, string> = {
+    'USD': '🇺🇸',
+    'EUR': '🇪🇺',
+    'GBP': '🇬🇧',
+    'JPY': '🇯🇵',
+    'AUD': '🇦🇺',
+    'CAD': '🇨🇦',
+    'CHF': '🇨🇭',
+    'CNY': '🇨🇳',
+    'INR': '🇮🇳',
+    'BTC': '₿',
+    'ETH': '⟠',
+  };
+  return flags[currency] || '💰';
+};
+
 export default function TopNavbar() {
   const { activeAccount, accounts, balance, logout, switchAccount } = useAuth();
   const { isUnlocked, remaining } = useLossRequirement();
@@ -70,9 +88,16 @@ export default function TopNavbar() {
           {activeAccount && (
             <div className="flex items-center gap-2">
               <div className="flex items-center gap-1.5 bg-muted rounded-lg px-3 py-1.5">
-                <span className="text-[10px] text-muted-foreground">
-                  {activeAccount.is_virtual ? '💲' : '💵'}
-                </span>
+                {/* Show American flag for USD real accounts */}
+                {!activeAccount.is_virtual && activeAccount.currency === 'USD' ? (
+                  <span className="text-sm" role="img" aria-label="US Dollar">
+                    🇺🇸
+                  </span>
+                ) : (
+                  <span className="text-[10px] text-muted-foreground">
+                    {activeAccount.is_virtual ? '💲' : '💵'}
+                  </span>
+                )}
                 <span className={`font-mono text-sm font-bold ${balance >= 0 ? 'text-profit' : 'text-loss'}`}>
                   ${balance.toFixed(2)}
                 </span>
@@ -103,6 +128,10 @@ export default function TopNavbar() {
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" size="sm" className="h-8 px-2 text-xs gap-1">
+                    {/* Show flag next to account name in trigger */}
+                    {!activeAccount.is_virtual && activeAccount.currency === 'USD' && (
+                      <span className="text-sm">🇺🇸</span>
+                    )}
                     <span className="hidden sm:inline">{activeAccount.loginid}</span>
                     <ChevronDown className="w-3 h-3" />
                   </Button>
@@ -110,6 +139,8 @@ export default function TopNavbar() {
                 <DropdownMenuContent align="end" className="w-56">
                   {accounts.map(acc => {
                     const isRealLocked = !acc.is_virtual && !isUnlocked;
+                    const currencyFlag = !acc.is_virtual ? getCurrencyFlag(acc.currency) : '🎮';
+                    
                     return (
                       <DropdownMenuItem
                         key={acc.loginid}
@@ -122,7 +153,9 @@ export default function TopNavbar() {
                         }}
                         className={`${acc.loginid === activeAccount.loginid ? 'bg-accent' : ''} ${isRealLocked ? 'opacity-50' : ''}`}
                       >
-                        <span className="mr-2">{acc.is_virtual ? '🎮' : isRealLocked ? '🔒' : '💰'}</span>
+                        <span className="mr-2 text-base">
+                          {acc.is_virtual ? '🎮' : currencyFlag}
+                        </span>
                         {acc.loginid} ({acc.currency})
                         {isRealLocked && <span className="ml-auto text-[9px] text-warning">Locked</span>}
                       </DropdownMenuItem>
@@ -138,21 +171,67 @@ export default function TopNavbar() {
         </div>
       </div>
 
-      {/* Row 2: Navigation links */}
+      {/* Row 2: Navigation links with Blue/Pink styling */}
       <nav className="flex items-center gap-1 px-4 pb-2 overflow-x-auto no-scrollbar max-w-[1920px] mx-auto">
-        {navItems.map(item => (
-          <NavLink
-            key={item.url}
-            to={item.url}
-            end={item.url === '/'}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] text-muted-foreground hover:text-foreground hover:bg-muted transition-all whitespace-nowrap shrink-0"
-            activeClassName="!text-primary !bg-primary/10 font-semibold"
-          >
-            <item.icon className="w-3.5 h-3.5" />
-            <span>{item.title}</span>
-          </NavLink>
-        ))}
+        {navItems.map((item, index) => {
+          // Assign different gradient colors based on index
+          const getIconGradient = () => {
+            const gradients = [
+              'from-blue-500 to-pink-500',
+              'from-pink-500 to-purple-500',
+              'from-blue-400 to-pink-400',
+              'from-purple-500 to-pink-500',
+              'from-blue-600 to-pink-600',
+              'from-sky-500 to-pink-500',
+              'from-indigo-500 to-pink-500',
+            ];
+            return gradients[index % gradients.length];
+          };
+
+          return (
+            <NavLink
+              key={item.url}
+              to={item.url}
+              end={item.url === '/'}
+              className={({ isActive }) => `
+                group relative flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] 
+                transition-all duration-300 whitespace-nowrap shrink-0
+                ${isActive 
+                  ? 'bg-gradient-to-r from-blue-500/20 to-pink-500/20 text-transparent bg-clip-text font-semibold shadow-sm' 
+                  : 'text-muted-foreground hover:text-foreground'
+                }
+              `}
+              activeClassName="!bg-gradient-to-r !from-blue-500/20 !to-pink-500/20"
+            >
+              {({ isActive }) => (
+                <>
+                  <item.icon 
+                    className={`
+                      w-3.5 h-3.5 transition-all duration-300
+                      ${isActive 
+                        ? `bg-gradient-to-r ${getIconGradient()} bg-clip-text text-transparent` 
+                        : 'text-muted-foreground group-hover:text-pink-500 group-hover:scale-110'
+                      }
+                    `}
+                  />
+                  <span className={`
+                    relative transition-all duration-300
+                    ${isActive 
+                      ? 'bg-gradient-to-r from-blue-500 to-pink-500 bg-clip-text text-transparent font-bold' 
+                      : 'group-hover:text-pink-500'
+                    }
+                  `}>
+                    {item.title}
+                    {!isActive && (
+                      <span className="absolute bottom-0 left-0 w-0 h-0.5 bg-gradient-to-r from-blue-500 to-pink-500 transition-all duration-300 group-hover:w-full"></span>
+                    )}
+                  </span>
+                </>
+              )}
+            </NavLink>
+          );
+        })}
       </nav>
     </header>
   );
-}
+  }
