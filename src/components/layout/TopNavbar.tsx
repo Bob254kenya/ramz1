@@ -3,7 +3,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useLossRequirement } from '@/hooks/useLossRequirement';
 import {
   LayoutDashboard, BarChart3, Activity, Bot, Cpu, Zap, Users,
-  Settings, LogOut, ChevronDown, RefreshCw,
+  History, Settings, LogOut, ChevronDown, RefreshCw,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -20,62 +20,29 @@ import SocialIcons from './SocialIcons';
 import ThemeToggle from './ThemeToggle';
 
 const navItems = [
-  {
-    title: 'Dashboard',
-    url: '/',
-    icon: LayoutDashboard,
-    bg: 'bg-blue-600',
-    active: 'bg-blue-700 text-white shadow-sm',
-  },
-  {
-    title: 'Ultimate Bot',
-    url: '/chart',
-    icon: Activity,
-    bg: 'bg-orange-500',
-    active: 'bg-orange-600 text-white shadow-sm',
-  },
-  {
-    title: 'Analysis',
-    url: '/markets',
-    icon: BarChart3,
-    bg: 'bg-green-600',
-    active: 'bg-green-700 text-white shadow-sm',
-  },
-  {
-    title: 'Free Bots',
-    url: '/smart-bot',
-    icon: Zap,
-    bg: 'bg-yellow-500',
-    active: 'bg-yellow-600 text-black shadow-sm',
-  },
-  {
-    title: 'Speed Bot',
-    url: '/auto-trade',
-    icon: Bot,
-    bg: 'bg-red-600',
-    active: 'bg-red-700 text-white shadow-sm',
-  },
-  {
-    title: 'Copy',
-    url: '/copy-trading',
-    icon: Users,
-    bg: 'bg-pink-600',
-    active: 'bg-pink-700 text-white shadow-sm',
-  },
-  {
-    title: 'Settings',
-    url: '/settings',
-    icon: Settings,
-    bg: 'bg-indigo-600',
-    active: 'bg-indigo-700 text-white shadow-sm',
-  },
+  { title: 'Dashboard', url: '/', icon: LayoutDashboard },
+  { title: 'Ultimate 💥 2026-2027 Bot', url: '/chart', icon: Activity },
+  { title: 'Ramzfx Analysistool', url: '/markets', icon: BarChart3 },
+  { title: 'Free Bots', url: '/smart-bot', icon: Zap },
+  { title: 'Advanced Tool $ Speed Bot', url: '/auto-trade', icon: Bot },
+  { title: 'Copy Trading', url: '/copy-trading', icon: Users },
+  { title: 'Multi-Strategy Bot', url: '/settings', icon: Settings },
 ];
 
+// Helper function to get currency flag
 const getCurrencyFlag = (currency: string) => {
   const flags: Record<string, string> = {
-    USD: '🇺🇸', EUR: '🇪🇺', GBP: '🇬🇧', JPY: '🇯🇵',
-    AUD: '🇦🇺', CAD: '🇨🇦', CHF: '🇨🇭', CNY: '🇨🇳',
-    INR: '🇮🇳', BTC: '₿', ETH: '⟠',
+    'USD': '🇺🇸',
+    'EUR': '🇪🇺',
+    'GBP': '🇬🇧',
+    'JPY': '🇯🇵',
+    'AUD': '🇦🇺',
+    'CAD': '🇨🇦',
+    'CHF': '🇨🇭',
+    'CNY': '🇨🇳',
+    'INR': '🇮🇳',
+    'BTC': '₿',
+    'ETH': '⟠',
   };
   return flags[currency] || '💰';
 };
@@ -99,136 +66,151 @@ export default function TopNavbar() {
 
   return (
     <header className="sticky top-0 z-50 bg-black border-b border-gray-800">
-
-      {/* TOP ROW */}
+      {/* Row 1: Logo + Theme Toggle + Balance + Account */}
       <div className="flex items-center h-12 px-4 max-w-[1920px] mx-auto">
-
         {/* Logo */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0">
           <div className="w-7 h-7 rounded-lg bg-blue-600 flex items-center justify-center">
             <Cpu className="w-3.5 h-3.5 text-white" />
           </div>
           <span className="font-bold text-white text-sm">
             RAMZ<span className="text-blue-500">FX</span>
           </span>
-          <SocialIcons />
+          <div className="ml-1">
+            <SocialIcons />
+          </div>
         </div>
 
-        {/* Right side */}
+        {/* Theme Toggle + Balance + Account (right-aligned) */}
         <div className="flex items-center gap-2 ml-auto">
           <ThemeToggle />
-
+          
           {activeAccount && (
             <div className="flex items-center gap-2">
-
-              {/* Balance */}
               <div className="flex items-center gap-1.5 bg-gray-900 rounded-lg px-3 py-1.5">
-                <span className="text-xs text-gray-400">
-                  {activeAccount.is_virtual ? '💲' : '💵'}
-                </span>
+                {/* Show American flag for USD real accounts */}
+                {!activeAccount.is_virtual && activeAccount.currency === 'USD' ? (
+                  <span className="text-sm" role="img" aria-label="US Dollar">
+                    🇺🇸
+                  </span>
+                ) : (
+                  <span className="text-[10px] text-gray-400">
+                    {activeAccount.is_virtual ? '💲' : '💵'}
+                  </span>
+                )}
                 <span className={`font-mono text-sm font-bold ${balance >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                   ${balance.toFixed(2)}
                 </span>
               </div>
 
-              {/* Reset */}
               {activeAccount.is_virtual && (
                 <AlertDialog>
                   <AlertDialogTrigger asChild>
-                    <Button size="sm" className="h-7 w-7 p-0 bg-gray-800 hover:bg-gray-700">
-                      <RefreshCw className="w-3.5 h-3.5 text-white" />
+                    <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-gray-400 hover:text-white bg-transparent hover:bg-gray-800">
+                      <RefreshCw className="w-3.5 h-3.5" />
                     </Button>
                   </AlertDialogTrigger>
                   <AlertDialogContent className="bg-black border border-gray-800 text-white">
                     <AlertDialogHeader>
-                      <AlertDialogTitle>Reset Demo Balance</AlertDialogTitle>
-                      <AlertDialogDescription>
-                        Reset to $10,000?
+                      <AlertDialogTitle className="text-white">Reset Demo Balance</AlertDialogTitle>
+                      <AlertDialogDescription className="text-gray-400">
+                        Reset account balance to $10,000? This cannot be undone.
                       </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
-                      <AlertDialogCancel>Cancel</AlertDialogCancel>
-                      <AlertDialogAction onClick={handleResetBalance}>
-                        Reset
-                      </AlertDialogAction>
+                      <AlertDialogCancel className="bg-gray-800 text-white border-gray-700 hover:bg-gray-700">Cancel</AlertDialogCancel>
+                      <AlertDialogAction onClick={handleResetBalance} className="bg-blue-600 hover:bg-blue-700">Reset Balance</AlertDialogAction>
                     </AlertDialogFooter>
                   </AlertDialogContent>
                 </AlertDialog>
               )}
 
-              {/* Account Dropdown */}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button size="sm" className="text-xs bg-gray-800 hover:bg-gray-700 text-white">
-                    {activeAccount.loginid}
-                    <ChevronDown className="w-3 h-3 ml-1" />
+                  <Button variant="ghost" size="sm" className="h-8 px-2 text-xs gap-1 text-white bg-transparent hover:bg-gray-800">
+                    {/* Show flag next to account name in trigger */}
+                    {!activeAccount.is_virtual && activeAccount.currency === 'USD' && (
+                      <span className="text-sm">🇺🇸</span>
+                    )}
+                    <span className="hidden sm:inline">{activeAccount.loginid}</span>
+                    <ChevronDown className="w-3 h-3" />
                   </Button>
                 </DropdownMenuTrigger>
-
-                <DropdownMenuContent className="bg-black text-white border-gray-800">
+                <DropdownMenuContent align="end" className="w-56 bg-black border border-gray-800 text-white">
                   {accounts.map(acc => {
                     const isRealLocked = !acc.is_virtual && !isUnlocked;
                     const currencyFlag = !acc.is_virtual ? getCurrencyFlag(acc.currency) : '🎮';
-
+                    
                     return (
                       <DropdownMenuItem
                         key={acc.loginid}
                         onClick={() => {
                           if (isRealLocked) {
-                            toast.error(`Locked. ${remaining} losses required`);
+                            toast.error(`Real trading locked. ${remaining} more virtual losses required.`);
                             return;
                           }
                           switchAccount(acc.loginid);
                         }}
-                        className="text-white"
+                        className={`${acc.loginid === activeAccount.loginid ? 'bg-gray-800' : ''} ${isRealLocked ? 'opacity-50' : ''} text-white focus:bg-gray-800 focus:text-white`}
                       >
-                        {currencyFlag} {acc.loginid}
+                        <span className="mr-2 text-base">
+                          {acc.is_virtual ? '🎮' : currencyFlag}
+                        </span>
+                        {acc.loginid} ({acc.currency})
+                        {isRealLocked && <span className="ml-auto text-[9px] text-yellow-500">Locked</span>}
                       </DropdownMenuItem>
                     );
                   })}
-                  <DropdownMenuItem onClick={logout} className="text-red-400">
-                    <LogOut className="mr-2 w-3 h-3" /> Logout
+                  <DropdownMenuItem onClick={logout} className="text-red-400 focus:text-red-400 focus:bg-gray-800">
+                    <LogOut className="mr-2 h-3.5 w-3.5" /> Logout
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
-
             </div>
           )}
         </div>
       </div>
 
-      {/* NAV LINKS */}
-      <div className="bg-[#0b1d3a] border-t border-gray-800">
-        <div className="overflow-x-auto">
-
-          <nav className="flex items-center px-2 h-11 min-w-max">
-
-            {navItems.map(item => (
-              <NavLink
-                key={item.url}
-                to={item.url}
-                end={item.url === '/'}
-                className={({ isActive }) => `
-                  flex items-center gap-1.5
-                  px-3 py-1.5
-                  mx-1
-                  text-[10px]
-                  font-medium
-                  rounded-[5px]
-                  whitespace-nowrap
-                  transition-all duration-200
-                  ${isActive ? item.active : `${item.bg} text-white`}
-                `}
-              >
-                <item.icon className="w-3 h-3 text-white" />
-                <span>{item.title}</span>
-              </NavLink>
-            ))}
-
+      {/* Row 2: Navigation links with blue background, white text, borders, margins, and padding */}
+      <div className="border-t border-gray-800 bg-black">
+        {/* Scrollable container */}
+        <div className="overflow-x-auto overflow-y-visible scrollbar-thin scrollbar-thumb-gray-700 scrollbar-track-transparent hover:scrollbar-thumb-gray-600">
+          <nav className="flex items-center gap-0 px-4 min-w-max h-12 max-w-[1920px] mx-auto">
+            {navItems.map((item) => {
+              return (
+                <NavLink
+                  key={item.url}
+                  to={item.url}
+                  end={item.url === '/'}
+                  className={({ isActive }) => `
+                    group relative flex items-center gap-2 px-4 py-2 text-[11px] font-medium
+                    transition-all duration-300 ease-in-out transform
+                    whitespace-nowrap shrink-0
+                    border border-blue-600 rounded-[5%] mx-[7px]
+                    bg-blue-600 text-white
+                    hover:bg-blue-700 hover:border-blue-700 hover:scale-105 hover:shadow-lg
+                    ${isActive ? 'bg-blue-700 border-blue-700 shadow-md' : ''}
+                  `}
+                >
+                  {({ isActive }) => (
+                    <>
+                      <item.icon 
+                        className={`
+                          w-3.5 h-3.5 transition-all duration-300 ease-in-out
+                          text-white group-hover:rotate-12
+                        `}
+                      />
+                      <span className="transition-all duration-300 ease-in-out group-hover:translate-x-0.5">
+                        {item.title}
+                      </span>
+                    </>
+                  )}
+                </NavLink>
+              );
+            })}
           </nav>
-
         </div>
       </div>
     </header>
   );
-      }
+  }
