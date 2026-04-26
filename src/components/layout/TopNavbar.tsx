@@ -24,57 +24,50 @@ const navItems = [
     title: 'Dashboard',
     url: '/',
     icon: LayoutDashboard,
-    bg: 'bg-blue-500',
-    border: 'border-blue-500',
-    hoverText: 'hover:text-blue-600',
+    bg: 'bg-blue-600',
+    active: 'bg-blue-700 text-white shadow-sm',
   },
   {
-    title: 'Ultimate 💥 2026-2027 Bot',
+    title: 'Ultimate Bot',
     url: '/chart',
     icon: Activity,
-    bg: 'bg-purple-500',
-    border: 'border-purple-500',
-    hoverText: 'hover:text-purple-600',
+    bg: 'bg-orange-500',
+    active: 'bg-orange-600 text-white shadow-sm',
   },
   {
-    title: 'Ramzfx Analysistool',
+    title: 'Analysis',
     url: '/markets',
     icon: BarChart3,
-    bg: 'bg-green-500',
-    border: 'border-green-500',
-    hoverText: 'hover:text-green-600',
+    bg: 'bg-green-600',
+    active: 'bg-green-700 text-white shadow-sm',
   },
   {
     title: 'Free Bots',
     url: '/smart-bot',
     icon: Zap,
     bg: 'bg-yellow-500',
-    border: 'border-yellow-500',
-    hoverText: 'hover:text-yellow-600',
+    active: 'bg-yellow-600 text-black shadow-sm',
   },
   {
-    title: 'Advanced Tool $ Speed Bot',
+    title: 'Speed Bot',
     url: '/auto-trade',
     icon: Bot,
-    bg: 'bg-red-500',
-    border: 'border-red-500',
-    hoverText: 'hover:text-red-600',
+    bg: 'bg-red-600',
+    active: 'bg-red-700 text-white shadow-sm',
   },
   {
-    title: 'Copy Trading',
+    title: 'Copy',
     url: '/copy-trading',
     icon: Users,
-    bg: 'bg-pink-500',
-    border: 'border-pink-500',
-    hoverText: 'hover:text-pink-600',
+    bg: 'bg-pink-600',
+    active: 'bg-pink-700 text-white shadow-sm',
   },
   {
-    title: 'Multi-Strategy Bot',
+    title: 'Settings',
     url: '/settings',
     icon: Settings,
-    bg: 'bg-indigo-500',
-    border: 'border-indigo-500',
-    hoverText: 'hover:text-indigo-600',
+    bg: 'bg-indigo-600',
+    active: 'bg-indigo-700 text-white shadow-sm',
   },
 ];
 
@@ -205,10 +198,10 @@ export default function TopNavbar() {
       </div>
 
       {/* NAV LINKS */}
-      <div className="bg-black border-t border-gray-800">
+      <div className="bg-[#0b1d3a] border-t border-gray-800">
         <div className="overflow-x-auto">
 
-          <nav className="flex items-center px-4 h-12 min-w-max">
+          <nav className="flex items-center px-2 h-11 min-w-max">
 
             {navItems.map(item => (
               <NavLink
@@ -216,35 +209,19 @@ export default function TopNavbar() {
                 to={item.url}
                 end={item.url === '/'}
                 className={({ isActive }) => `
-                  group flex items-center gap-2
-                  px-4 py-2
-                  mx-2
-                  text-[11px]
-                  font-semibold
+                  flex items-center gap-1.5
+                  px-3 py-1.5
+                  mx-1
+                  text-[10px]
+                  font-medium
                   rounded-[5px]
-                  border
-                  transition-all duration-300 ease-in-out
                   whitespace-nowrap
-                  ${isActive
-                    ? `${item.bg} ${item.border} text-white shadow-md scale-105`
-                    : `${item.bg} ${item.border} text-white hover:bg-white ${item.hoverText} hover:shadow-lg hover:-translate-y-[2px]`
-                  }
+                  transition-all duration-200
+                  ${isActive ? item.active : `${item.bg} text-white`}
                 `}
               >
-                {({ isActive }) => (
-                  <>
-                    <item.icon
-                      className={`w-3.5 h-3.5 transition-all duration-300 ${
-                        isActive
-                          ? 'text-white'
-                          : 'text-white group-hover:rotate-6'
-                      }`}
-                    />
-                    <span className="tracking-wide">
-                      {item.title}
-                    </span>
-                  </>
-                )}
+                <item.icon className="w-3 h-3 text-white" />
+                <span>{item.title}</span>
               </NavLink>
             ))}
 
@@ -254,4 +231,4 @@ export default function TopNavbar() {
       </div>
     </header>
   );
-  }
+      }
