@@ -152,14 +152,14 @@ const SocialNotificationPopup = ({ onClose }: { onClose: () => void }) => {
   const socialLinks = [
     {
       name: 'WhatsApp',
-      url: 'https://+2544942149',
+      url: 'https://+254757261120',
       icon: <MessageCircle className="w-4 h-4" />,
       color: 'hover:text-[#25D366]',
       bgGradient: 'from-green-500/20 to-green-600/20',
     },
     {
       name: 'Telegram Group',
-      url: 'https://t.me/+YDUwvuuVDYg5NjE0',
+      url: 'https://t.me/ramztrader',
       icon: <MessageSquare className="w-4 h-4" />,
       color: 'hover:text-[#26A5E4]',
       bgGradient: 'from-blue-500/20 to-blue-600/20',
@@ -180,14 +180,14 @@ const SocialNotificationPopup = ({ onClose }: { onClose: () => void }) => {
     },
     {
       name: 'TikTok',
-      url: 'https://www.tiktok.com/@aliceousmillie?_t=ZM-90rqIhv3NY8&_r=1',
+      url: 'https://www.tiktok.com/@ceoramz?_r=1&_t=ZS-94SPdGqZ8dR',
       icon: <Music className="w-4 h-4" />,
       color: 'hover:text-foreground',
       bgGradient: 'from-gray-500/20 to-gray-600/20',
     },
     {
       name: 'Instagram',
-      url: ' https://www.instagram.com/aliceousmilliie?igsh=ZHJrZXFtdGViendx',
+      url: 'https://www.instagram.com/ramztrader.site?igsh=aDY1aGFiMGpobHJi',
       icon: <Instagram className="w-4 h-4" />,
       color: 'hover:text-[#E4405F]',
       bgGradient: 'from-pink-500/20 to-pink-600/20',
@@ -235,7 +235,7 @@ const SocialNotificationPopup = ({ onClose }: { onClose: () => void }) => {
                 <Users className="w-5 h-5 text-white" />
               </div>
               <div>
-                <h2 className="text-lg font-bold text-white">Join Our Trading Community</h2>
+                <h2 className="text-lg font-bold text-white">Join Ramzfx Trading Group</h2>
                 <p className="text-[10px] text-white/80">Connect & Grow Together</p>
               </div>
             </div>
