@@ -3,7 +3,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useLossRequirement } from '@/hooks/useLossRequirement';
 import {
   LayoutDashboard, BarChart3, Activity, Bot, Cpu, Zap, Users,
-  History, Settings, LogOut, ChevronDown, RefreshCw,
+  Settings, LogOut, ChevronDown, RefreshCw,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -21,7 +21,7 @@ import ThemeToggle from './ThemeToggle';
 
 const navItems = [
   { title: 'Dashboard', url: '/', icon: LayoutDashboard },
-  { title: 'Ultimate Bots, url: '/chart', icon: Activity },
+  { title: 'Ultimate Bots', url: '/chart', icon: Activity },
   { title: 'Ramzfx Analysistool', url: '/markets', icon: BarChart3 },
   { title: 'Free Bots', url: '/smart-bot', icon: Zap },
   { title: 'Advanced Tool $ Speed Bot', url: '/auto-trade', icon: Bot },
@@ -29,20 +29,11 @@ const navItems = [
   { title: 'Multi-Strategy Bot', url: '/settings', icon: Settings },
 ];
 
-// Helper function to get currency flag
 const getCurrencyFlag = (currency: string) => {
   const flags: Record<string, string> = {
-    'USD': '🇺🇸',
-    'EUR': '🇪🇺',
-    'GBP': '🇬🇧',
-    'JPY': '🇯🇵',
-    'AUD': '🇦🇺',
-    'CAD': '🇨🇦',
-    'CHF': '🇨🇭',
-    'CNY': '🇨🇳',
-    'INR': '🇮🇳',
-    'BTC': '₿',
-    'ETH': '⟠',
+    USD: '🇺🇸', EUR: '🇪🇺', GBP: '🇬🇧', JPY: '🇯🇵',
+    AUD: '🇦🇺', CAD: '🇨🇦', CHF: '🇨🇭', CNY: '🇨🇳',
+    INR: '🇮🇳', BTC: '₿', ETH: '⟠',
   };
   return flags[currency] || '💰';
 };
@@ -66,35 +57,34 @@ export default function TopNavbar() {
 
   return (
     <header className="sticky top-0 z-50 bg-black border-b border-gray-800">
-      {/* Row 1: Logo + Theme Toggle + Balance + Account */}
+
+      {/* TOP ROW */}
       <div className="flex items-center h-12 px-4 max-w-[1920px] mx-auto">
+
         {/* Logo */}
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-2">
           <div className="w-7 h-7 rounded-lg bg-blue-600 flex items-center justify-center">
             <Cpu className="w-3.5 h-3.5 text-white" />
           </div>
           <span className="font-bold text-white text-sm">
             RAMZ<span className="text-blue-500">FX</span>
           </span>
-          <div className="ml-1">
-            <SocialIcons />
-          </div>
+          <SocialIcons />
         </div>
 
-        {/* Theme Toggle + Balance + Account (right-aligned) */}
+        {/* Right side */}
         <div className="flex items-center gap-2 ml-auto">
           <ThemeToggle />
-          
+
           {activeAccount && (
             <div className="flex items-center gap-2">
+
+              {/* Balance */}
               <div className="flex items-center gap-1.5 bg-gray-900 rounded-lg px-3 py-1.5">
-                {/* Show American flag for USD real accounts */}
                 {!activeAccount.is_virtual && activeAccount.currency === 'USD' ? (
-                  <span className="text-sm" role="img" aria-label="US Dollar">
-                    🇺🇸
-                  </span>
+                  <span>🇺🇸</span>
                 ) : (
-                  <span className="text-[10px] text-gray-400">
+                  <span className="text-xs text-gray-400">
                     {activeAccount.is_virtual ? '💲' : '💵'}
                   </span>
                 )}
@@ -103,114 +93,123 @@ export default function TopNavbar() {
                 </span>
               </div>
 
+              {/* Reset */}
               {activeAccount.is_virtual && (
                 <AlertDialog>
                   <AlertDialogTrigger asChild>
-                    <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-gray-400 hover:text-white bg-transparent hover:bg-gray-800">
-                      <RefreshCw className="w-3.5 h-3.5" />
+                    <Button size="sm" className="h-7 w-7 p-0 bg-gray-800 hover:bg-gray-700">
+                      <RefreshCw className="w-3.5 h-3.5 text-white" />
                     </Button>
                   </AlertDialogTrigger>
                   <AlertDialogContent className="bg-black border border-gray-800 text-white">
                     <AlertDialogHeader>
-                      <AlertDialogTitle className="text-white">Reset Demo Balance</AlertDialogTitle>
-                      <AlertDialogDescription className="text-gray-400">
-                        Reset account balance to $10,000? This cannot be undone.
+                      <AlertDialogTitle>Reset Demo Balance</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        Reset to $10,000?
                       </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
-                      <AlertDialogCancel className="bg-gray-800 text-white border-gray-700 hover:bg-gray-700">Cancel</AlertDialogCancel>
-                      <AlertDialogAction onClick={handleResetBalance} className="bg-blue-600 hover:bg-blue-700">Reset Balance</AlertDialogAction>
+                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                      <AlertDialogAction onClick={handleResetBalance}>
+                        Reset
+                      </AlertDialogAction>
                     </AlertDialogFooter>
                   </AlertDialogContent>
                 </AlertDialog>
               )}
 
+              {/* Account Dropdown */}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="sm" className="h-8 px-2 text-xs gap-1 text-white bg-transparent hover:bg-gray-800">
-                    {/* Show flag next to account name in trigger */}
-                    {!activeAccount.is_virtual && activeAccount.currency === 'USD' && (
-                      <span className="text-sm">🇺🇸</span>
-                    )}
-                    <span className="hidden sm:inline">{activeAccount.loginid}</span>
-                    <ChevronDown className="w-3 h-3" />
+                  <Button size="sm" className="text-xs bg-gray-800 hover:bg-gray-700 text-white">
+                    {activeAccount.loginid}
+                    <ChevronDown className="w-3 h-3 ml-1" />
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-56 bg-black border border-gray-800 text-white">
+
+                <DropdownMenuContent className="bg-black text-white border-gray-800">
                   {accounts.map(acc => {
                     const isRealLocked = !acc.is_virtual && !isUnlocked;
                     const currencyFlag = !acc.is_virtual ? getCurrencyFlag(acc.currency) : '🎮';
-                    
+
                     return (
                       <DropdownMenuItem
                         key={acc.loginid}
                         onClick={() => {
                           if (isRealLocked) {
-                            toast.error(`Real trading locked. ${remaining} more virtual losses required.`);
+                            toast.error(`Locked. ${remaining} losses required`);
                             return;
                           }
                           switchAccount(acc.loginid);
                         }}
-                        className={`${acc.loginid === activeAccount.loginid ? 'bg-gray-800' : ''} ${isRealLocked ? 'opacity-50' : ''} text-white focus:bg-gray-800 focus:text-white`}
+                        className="text-white"
                       >
-                        <span className="mr-2 text-base">
-                          {acc.is_virtual ? '🎮' : currencyFlag}
-                        </span>
-                        {acc.loginid} ({acc.currency})
-                        {isRealLocked && <span className="ml-auto text-[9px] text-yellow-500">Locked</span>}
+                        {currencyFlag} {acc.loginid}
                       </DropdownMenuItem>
                     );
                   })}
-                  <DropdownMenuItem onClick={logout} className="text-red-400 focus:text-red-400 focus:bg-gray-800">
-                    <LogOut className="mr-2 h-3.5 w-3.5" /> Logout
+                  <DropdownMenuItem onClick={logout} className="text-red-400">
+                    <LogOut className="mr-2 w-3 h-3" /> Logout
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
+
             </div>
           )}
         </div>
       </div>
 
-      {/* Row 2: Navigation links with blue background, white text, borders, margins, and padding */}
-      <div className="border-t border-gray-800 bg-black">
-        {/* Scrollable container */}
-        <div className="overflow-x-auto overflow-y-visible scrollbar-thin scrollbar-thumb-gray-700 scrollbar-track-transparent hover:scrollbar-thumb-gray-600">
-          <nav className="flex items-center gap-0 px-4 min-w-max h-12 max-w-[1920px] mx-auto">
-            {navItems.map((item) => {
-              return (
-                <NavLink
-                  key={item.url}
-                  to={item.url}
-                  end={item.url === '/'}
-                  className={({ isActive }) => `
-                    group relative flex items-center gap-2 px-4 py-2 text-[11px] font-medium
-                    transition-all duration-300 ease-in-out transform
-                    whitespace-nowrap shrink-0
-                    border border-blue-600 rounded-[5%] mx-[7px]
-                    bg-blue-600 text-white
-                    hover:bg-blue-700 hover:border-blue-700 hover:scale-105 hover:shadow-lg
-                    ${isActive ? 'bg-blue-700 border-blue-700 shadow-md' : ''}
-                  `}
-                >
-                  {({ isActive }) => (
-                    <>
-                      <item.icon 
-                        className={`
-                          w-3.5 h-3.5 transition-all duration-300 ease-in-out
-                          text-white group-hover:rotate-12
-                        `}
-                      />
-                      <span className="transition-all duration-300 ease-in-out group-hover:translate-x-0.5">
-                        {item.title}
-                      </span>
-                    </>
-                  )}
-                </NavLink>
-              );
-            })}
+      {/* NAV LINKS */}
+      <div className="bg-white border-t border-gray-800">
+        <div className="overflow-x-auto">
+
+          <nav className="flex items-center px-4 h-12 min-w-max">
+
+            {navItems.map(item => (
+              <NavLink
+                key={item.url}
+                to={item.url}
+                end={item.url === '/'}
+                className={({ isActive }) => `
+                  group flex items-center gap-1.5
+                  px-3 py-2
+                  mx-[7px]
+                  text-[10px]
+                  font-medium
+                  rounded-[5px]
+                  border
+                  transition-all duration-300 ease-in-out
+                  whitespace-nowrap
+
+                  ${isActive
+                    ? 'bg-blue-600 text-white border-blue-600 shadow-md scale-105'
+                    : 'bg-blue-500 text-white border-blue-500 hover:bg-white hover:text-blue-600 hover:border-blue-600 hover:shadow-lg hover:-translate-y-0.5'
+                  }
+                `}
+              >
+                {({ isActive }) => (
+                  <>
+                    <item.icon
+                      className={`
+                        w-3 h-3 transition-all duration-300
+                        ${isActive
+                          ? 'text-white'
+                          : 'text-white group-hover:text-blue-600 group-hover:rotate-6'
+                        }
+                      `}
+                    />
+                    <span className="transition-all duration-300 group-hover:tracking-wide">
+                      {item.title}
+                    </span>
+                  </>
+                )}
+              </NavLink>
+            ))}
+
           </nav>
+
         </div>
       </div>
     </header>
   );
-      }
+        }
