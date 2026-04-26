@@ -16,90 +16,8 @@ import { useAuth } from '@/contexts/AuthContext';
 import {
   TrendingUp, TrendingDown, Activity, BarChart3, ArrowUp, ArrowDown, Minus,
   Target, ShieldAlert, Gauge, Volume2, VolumeX, Clock, Zap, Trophy, Play, Pause, StopCircle, Eye, EyeOff, RefreshCw,
-  Plus, X, LineChart, Anchor, Copy, Users, Wifi, WifiOff, Combine
+  Plus, X, LineChart, Anchor, Copy, Users, Wifi, WifiOff, Combine, Sparkles, RotateCw
 } from 'lucide-react';
-
-// ============================================
-// MARKET DIGIT EXTRACTION CONFIGURATION
-// ============================================
-
-type DigitPosition = 1 | 2 | 3 | 4; // Digit position after decimal: 1st, 2nd, 3rd, or 4th digit
-
-interface MarketDigitConfig {
-  position: DigitPosition;
-  description: string;
-}
-
-const MARKET_DIGIT_CONFIG: Record<string, MarketDigitConfig> = {
-  // Extract 3rd digit after decimal
-  '1HZ15V': { position: 3, description: 'Volatility 15 (1s) - 3rd digit' },
-  '1HZ25V': { position: 3, description: 'Volatility 25 (1s) - 3rd digit' },
-  '1HZ30V': { position: 3, description: 'Volatility 30 (1s) - 3rd digit' },
-  '1HZ90V': { position: 3, description: 'Volatility 90 (1s) - 3rd digit' },
-  'R_10': { position: 3, description: 'Volatility 10 Index - 3rd digit' },
-  'R_25': { position: 3, description: 'Volatility 25 Index - 3rd digit' },
-  // Extract 4th digit after decimal (higher precision)
-  '1HZ50V': { position: 4, description: 'Volatility 50 (1s) - 4th digit' },
-  '1HZ75V': { position: 4, description: 'Volatility 75 (1s) - 4th digit' },
-  '1HZ100V': { position: 4, description: 'Volatility 100 (1s) - 4th digit' },
-  'R_50': { position: 4, description: 'Volatility 50 Index - 4th digit' },
-  'R_75': { position: 4, description: 'Volatility 75 Index - 4th digit' },
-  'R_100': { position: 4, description: 'Volatility 100 Index - 4th digit' },
-  'R_150': { position: 4, description: 'Volatility 150 Index - 4th digit' },
-  'RDBEAR': { position: 4, description: 'Bear Market - 4th digit' },
-  'RDBULL': { position: 4, description: 'Bull Market - 4th digit' },
-  'JD10': { position: 4, description: 'Jump 10 - 4th digit' },
-  'JD25': { position: 4, description: 'Jump 25 - 4th digit' },
-  'JD50': { position: 4, description: 'Jump 50 - 4th digit' },
-  'JD75': { position: 4, description: 'Jump 75 - 4th digit' },
-  'JD100': { position: 4, description: 'Jump 100 - 4th digit' },
-  // Default for other markets (first digit after decimal)
-  'stpRNG': { position: 1, description: 'Step Index - 1st digit' },
-  'RBRK100': { position: 2, description: 'Range Break 100 - 2nd digit' },
-  'RBRK200': { position: 2, description: 'Range Break 200 - 2nd digit' },
-};
-
-// Default config for any market not specified
-const DEFAULT_DIGIT_CONFIG: MarketDigitConfig = { position: 1, description: 'Default - 1st digit' };
-
-/**
- * Extract a specific digit after the decimal point from a price
- * @param price - The price value (e.g., 1234.56789)
- * @param position - Which digit after decimal (1 = first, 2 = second, etc.)
- * @returns The extracted digit (0-9)
- */
-function extractDigitByPosition(price: number, position: DigitPosition): number {
-  // Convert to string with sufficient precision
-  const priceStr = price.toFixed(10);
-  const decimalIndex = priceStr.indexOf('.');
-  
-  if (decimalIndex === -1) return 0;
-  
-  // Get the digit at the specified position after decimal
-  const digitIndex = decimalIndex + position;
-  if (digitIndex >= priceStr.length) return 0;
-  
-  const digitChar = priceStr[digitIndex];
-  const digit = parseInt(digitChar, 10);
-  
-  return isNaN(digit) ? 0 : digit;
-}
-
-/**
- * Get the digit extraction configuration for a specific market
- */
-function getMarketDigitConfig(symbol: string): MarketDigitConfig {
-  return MARKET_DIGIT_CONFIG[symbol] || DEFAULT_DIGIT_CONFIG;
-}
-
-/**
- * Get the last digit from a price based on market-specific configuration
- * This replaces the original getLastDigit function with market-aware extraction
- */
-function getMarketAwareLastDigit(price: number, symbol: string): number {
-  const config = getMarketDigitConfig(symbol);
-  return extractDigitByPosition(price, config.position);
-}
 
 // ============================================
 // TP/SL NOTIFICATION POPUP - COMPONENT
@@ -167,6 +85,68 @@ const notificationStyles = `
   }
 }
 
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeInLeft {
+  from {
+    opacity: 0;
+    transform: translateX(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes fadeInRight {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes glowPulse {
+  0%, 100% {
+    box-shadow: 0 0 5px rgba(63, 185, 80, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 20px rgba(63, 185, 80, 0.6);
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -1000px 0;
+  }
+  100% {
+    background-position: 1000px 0;
+  }
+}
+
+@keyframes rotateIn {
+  from {
+    opacity: 0;
+    transform: rotate(-180deg) scale(0.5);
+  }
+  to {
+    opacity: 1;
+    transform: rotate(0) scale(1);
+  }
+}
+
 .animate-slide-up-center {
   animation: slideUpCenter 0.4s cubic-bezier(0.34, 1.2, 0.64, 1) forwards;
 }
@@ -189,6 +169,26 @@ const notificationStyles = `
 
 .animate-spin-slow {
   animation: spin 1s linear infinite;
+}
+
+.animate-fade-up {
+  animation: fadeInUp 0.5s ease-out forwards;
+}
+
+.animate-fade-left {
+  animation: fadeInLeft 0.5s ease-out forwards;
+}
+
+.animate-fade-right {
+  animation: fadeInRight 0.5s ease-out forwards;
+}
+
+.animate-glow {
+  animation: glowPulse 2s ease-in-out infinite;
+}
+
+.animate-rotate-in {
+  animation: rotateIn 0.4s cubic-bezier(0.34, 1.2, 0.64, 1) forwards;
 }
 `;
 
@@ -361,34 +361,26 @@ const TPSLNotificationPopup = () => {
 
 /* ── Markets ── */
 const ALL_MARKETS = [
-  // Volatility 1s series (1-second contracts)
   { symbol: '1HZ10V', name: 'Volatility 10 (1s)', group: 'vol1s' },
   { symbol: '1HZ15V', name: 'Volatility 15 (1s)', group: 'vol1s' },
   { symbol: '1HZ25V', name: 'Volatility 25 (1s)', group: 'vol1s' },
   { symbol: '1HZ30V', name: 'Volatility 30 (1s)', group: 'vol1s' },
   { symbol: '1HZ50V', name: 'Volatility 50 (1s)', group: 'vol1s' },
   { symbol: '1HZ75V', name: 'Volatility 75 (1s)', group: 'vol1s' },
-  { symbol: '1HZ90V', name: 'Volatility 90 (1s)', group: 'vol1s' },
   { symbol: '1HZ100V', name: 'Volatility 100 (1s)', group: 'vol1s' },
-  // Volatility indices
-  { symbol: 'R_10', name: 'Volatility 10 Index', group: 'vol' },
-  { symbol: 'R_25', name: 'Volatility 25 Index', group: 'vol' },
-  { symbol: 'R_50', name: 'Volatility 50 Index', group: 'vol' },
-  { symbol: 'R_75', name: 'Volatility 75 Index', group: 'vol' },
-  { symbol: 'R_100', name: 'Volatility 100 Index', group: 'vol' },
-  { symbol: 'R_150', name: 'Volatility 150 Index', group: 'vol' },
-  // Jump indices
+  { symbol: 'R_10', name: 'Volatility 10', group: 'vol' },
+  { symbol: 'R_25', name: 'Volatility 25', group: 'vol' },
+  { symbol: 'R_50', name: 'Volatility 50', group: 'vol' },
+  { symbol: 'R_75', name: 'Volatility 75', group: 'vol' },
+  { symbol: 'R_100', name: 'Volatility 100', group: 'vol' },
   { symbol: 'JD10', name: 'Jump 10', group: 'jump' },
   { symbol: 'JD25', name: 'Jump 25', group: 'jump' },
   { symbol: 'JD50', name: 'Jump 50', group: 'jump' },
   { symbol: 'JD75', name: 'Jump 75', group: 'jump' },
   { symbol: 'JD100', name: 'Jump 100', group: 'jump' },
-  // Market direction indices
   { symbol: 'RDBEAR', name: 'Bear Market', group: 'bear' },
   { symbol: 'RDBULL', name: 'Bull Market', group: 'bull' },
-  // Step index
   { symbol: 'stpRNG', name: 'Step Index', group: 'step' },
-  // Range break indices
   { symbol: 'RBRK100', name: 'Range Break 100', group: 'range' },
   { symbol: 'RBRK200', name: 'Range Break 200', group: 'range' },
 ];
@@ -405,9 +397,11 @@ const GROUPS = [
 ];
 
 const TIMEFRAMES = ['1m','3m','5m','15m','30m','1h','4h','12h','1d'];
+
+// UPDATED: Candle config from 1000 to 20000
 const CANDLE_CONFIG = {
   minCandles: 1000,
-  maxCandles: 100000, // Increased to 100,000 candles
+  maxCandles: 20000,
   defaultCandles: 1000,
 };
 
@@ -462,7 +456,6 @@ interface DigitStats {
   underPercentage: number;
   last26Digits: number[];
   tickPrices: number[];
-  digitPosition: number; // Track which digit position we're using
 }
 
 // Independent tick storage for digit analysis
@@ -682,7 +675,6 @@ function calculateDigitStats(symbol: string, tickRange: number): DigitStats {
   const ticks = getTickHistory(symbol);
   const tickPricesData = getTickPrices(symbol);
   const recentTicks = ticks.slice(-tickRange);
-  const digitConfig = getMarketDigitConfig(symbol);
   
   const frequency: Record<number, number> = {};
   for (let i = 0; i <= 9; i++) frequency[i] = 0;
@@ -731,7 +723,6 @@ function calculateDigitStats(symbol: string, tickRange: number): DigitStats {
     underPercentage: recentTicks.length > 0 ? (underCount / recentTicks.length * 100) : 50,
     last26Digits,
     tickPrices: last26Prices,
-    digitPosition: digitConfig.position,
   };
 }
 
@@ -752,7 +743,7 @@ function simulateVirtualContract(
       if (data.tick && data.tick.symbol === symbol) {
         clearTimeout(timeout);
         unsub();
-        const digit = getMarketAwareLastDigit(data.tick.quote, symbol);
+        const digit = getLastDigit(data.tick.quote);
         const b = parseInt(barrier) || 0;
         let won = false;
         switch (contractType) {
@@ -841,9 +832,36 @@ function checkPatternMatch(ticks: number[], tickPrices: number[], tokens: Patter
   return true;
 }
 
+// Animation variants for motion components
+const fadeInUpVariants = {
+  hidden: { opacity: 0, y: 30 },
+  visible: { opacity: 1, y: 0, transition: { duration: 0.5, ease: "easeOut" } }
+};
+
+const fadeInLeftVariants = {
+  hidden: { opacity: 0, x: -30 },
+  visible: { opacity: 1, x: 0, transition: { duration: 0.5, ease: "easeOut" } }
+};
+
+const fadeInRightVariants = {
+  hidden: { opacity: 0, x: 30 },
+  visible: { opacity: 1, x: 0, transition: { duration: 0.5, ease: "easeOut" } }
+};
+
+const staggerContainerVariants = {
+  hidden: { opacity: 0 },
+  visible: {
+    opacity: 1,
+    transition: {
+      staggerChildren: 0.1,
+      delayChildren: 0.2
+    }
+  }
+};
+
 export default function TradingChart() {
   const { isAuthorized, balance: apiBalance, refreshBalance } = useAuth();
-  const [showChart, setShowChart] = useState(false);
+  const [showChart, setShowChart] = useState(true);
   const [symbol, setSymbol] = useState('R_100');
   const [groupFilter, setGroupFilter] = useState('all');
   const [timeframe, setTimeframe] = useState('1m');
@@ -872,7 +890,6 @@ export default function TradingChart() {
     underPercentage: 50,
     last26Digits: [],
     tickPrices: [],
-    digitPosition: 1,
   });
 
   const [candleWidth, setCandleWidth] = useState(7);
@@ -937,13 +954,11 @@ export default function TradingChart() {
   const [vhStatus, setVhStatus] = useState<'idle' | 'waiting' | 'confirmed' | 'failed'>('idle');
   const patternTradeTakenRef = useRef(false);
 
-  // Helper function to get current market digit configuration info
-  const currentDigitConfig = useMemo(() => getMarketDigitConfig(symbol), [symbol]);
-
-  // Helper function to get digit from price based on current market
-  const getDigitFromPrice = useCallback((price: number): number => {
-    return getMarketAwareLastDigit(price, symbol);
-  }, [symbol]);
+  // Page entrance animation state
+  const [pageLoaded, setPageLoaded] = useState(false);
+  useEffect(() => {
+    setPageLoaded(true);
+  }, []);
 
   // Helper function to get symbol based on contract type, digit, and price movement
   const getDigitSymbol = useCallback((digit: number, price: number, prevPrice: number | null, type: string, barrier: string): string => {
@@ -1043,7 +1058,7 @@ export default function TradingChart() {
     ));
   }, []);
 
-  // Load history with increased candle limit
+  // Load history
   useEffect(() => {
     let active = true;
     let timeoutId: NodeJS.Timeout;
@@ -1083,7 +1098,7 @@ export default function TradingChart() {
         const hist = await derivApi.getTickHistory(symbol as MarketSymbol, ticksToLoad);
         if (!active) return;
         
-        const historicalDigits = (hist.history.prices || []).map(p => getDigitFromPrice(p));
+        const historicalDigits = (hist.history.prices || []).map(p => getLastDigit(p));
         const historicalPrices = hist.history.prices || [];
         globalTickHistory[symbol] = historicalDigits;
         globalTickPrices[symbol] = historicalPrices;
@@ -1100,7 +1115,7 @@ export default function TradingChart() {
             if (!active || !data.tick) return;
             
             const quote = data.tick.quote;
-            const digit = getDigitFromPrice(quote);
+            const digit = getLastDigit(quote);
             const epoch = data.tick.epoch;
             
             addTick(symbol, digit, quote);
@@ -1127,7 +1142,7 @@ export default function TradingChart() {
           });
           subscribedRef.current = true;
           console.log(`Subscribed to ${symbol} for real-time updates`);
-          toast.success(`Connected to ${symbol} market (Digit: ${currentDigitConfig.position}${currentDigitConfig.position === 1 ? 'st' : currentDigitConfig.position === 2 ? 'nd' : currentDigitConfig.position === 3 ? 'rd' : 'th'} digit)`, { duration: 3000 });
+          toast.success(`Connected to ${symbol} market`, { duration: 2000 });
         }
       } catch (err) {
         console.error('Error loading market data:', err);
@@ -1144,7 +1159,7 @@ export default function TradingChart() {
       cleanup();
       subscribedRef.current = false;
     };
-  }, [symbol, candleCount, updateDigitStats, showChart, getDigitFromPrice, currentDigitConfig.position]);
+  }, [symbol, candleCount, updateDigitStats, showChart]);
 
   useEffect(() => {
     const checkConnection = setInterval(() => {
@@ -1186,7 +1201,7 @@ export default function TradingChart() {
 
   const candles = useMemo(() => buildCandles(prices, times, timeframe), [prices, times, timeframe]);
   const currentPrice = prices[prices.length - 1] || 0;
-  const lastDigit = getDigitFromPrice(currentPrice);
+  const lastDigit = getLastDigit(currentPrice);
   
   const bb = useMemo(() => calculateBollingerBands(prices, 20), [prices]);
   const ema50 = useMemo(() => calcEMA(prices, 50), [prices]);
@@ -1202,7 +1217,7 @@ export default function TradingChart() {
   const rsiSeries = useMemo(() => calcRSISeries(prices, 14), [prices]);
   const macdSeries = useMemo(() => calcMACDSeries(prices), [prices]);
 
-  const { frequency, percentages, mostCommon, leastCommon, totalTicks, evenPercentage, oddPercentage, overPercentage, underPercentage, digitPosition } = digitStats;
+  const { frequency, percentages, mostCommon, leastCommon, totalTicks, evenPercentage, oddPercentage, overPercentage, underPercentage } = digitStats;
   
   const bbRange = bb.upper - bb.lower || 1;
   const bbPosition = ((currentPrice - bb.lower) / bbRange * 100);
@@ -1446,7 +1461,7 @@ export default function TradingChart() {
     };
   }, [candles.length, scrollOffset, candleWidth, showChart]);
 
-  // Chart rendering 
+  // Chart rendering (keep existing rendering logic)
   useEffect(() => {
     if (!showChart) return;
     
@@ -1859,7 +1874,7 @@ export default function TradingChart() {
       const won = result.status === 'won';
       const profit = result.profit;
       const newPnl = currentPnl + profit;
-      const resultDigit = getDigitFromPrice(result.price || 0);
+      const resultDigit = getLastDigit(result.price || 0);
       
       setTradeHistory(prev => prev.map(t =>
         t.id === contractId
@@ -1888,7 +1903,7 @@ export default function TradingChart() {
       toast.error(`Trade error: ${err.message}`);
       return { won: false, profit: 0, newPnl: currentPnl, shouldStop: false };
     }
-  }, [botConfig, voiceEnabled, getOutcomeSymbol, getDigitFromPrice]);
+  }, [botConfig, voiceEnabled, getOutcomeSymbol]);
 
   // ============================================
   // VIRTUAL TRADE FUNCTION (for hook phase) - NO NOTIFICATIONS
@@ -2196,28 +2211,55 @@ export default function TradingChart() {
   const winRate = totalTrades > 0 ? (winsCount / totalTrades * 100) : 0;
 
   const legend = getLegendText();
-
-  // Get digit position text for display
-  const digitPositionText = useMemo(() => {
-    const pos = currentDigitConfig.position;
-    const suffix = pos === 1 ? 'st' : pos === 2 ? 'nd' : pos === 3 ? 'rd' : 'th';
-    return `${pos}${suffix}`;
-  }, [currentDigitConfig.position]);
+  
+  // Candle count options from 1000 to 20000
+  const candleCountOptions = [1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000, 12000, 15000, 20000];
 
   return (
-    <div className="space-y-4 max-w-[1920px] mx-auto p-4">
+    <motion.div 
+      className="space-y-4 max-w-[1920px] mx-auto p-4"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: pageLoaded ? 1 : 0 }}
+      transition={{ duration: 0.5 }}
+    >
+      <style>{notificationStyles}</style>
+      
       {/* TP/SL Notification Popup */}
       <TPSLNotificationPopup />
       
-      {/* Header */}
-      <div className="flex items-center justify-between flex-wrap gap-2">
+      {/* Header with Animation */}
+      <motion.div 
+        variants={fadeInUpVariants}
+        initial="hidden"
+        animate={pageLoaded ? "visible" : "hidden"}
+        className="flex items-center justify-between flex-wrap gap-2"
+      >
         <div>
-          <h1 className="text-xl font-bold text-foreground flex items-center gap-2">
-            <BarChart3 className="w-5 h-5 text-primary" />Ramzfx Trading Chart
-          </h1>
-          <p className="text-xs text-muted-foreground">{marketName} • {timeframe} • {candles.length} candles • Digit: {digitPositionText} after decimal</p>
+          <motion.h1 
+            className="text-xl font-bold text-foreground flex items-center gap-2"
+            initial={{ scale: 0.9 }}
+            animate={{ scale: 1 }}
+            transition={{ duration: 0.5, type: "spring" }}
+          >
+            <BarChart3 className="w-5 h-5 text-primary animate-rotate-in" />
+            Ramzfx Trading Chart
+            <Sparkles className="w-4 h-4 text-warning animate-pulse-slow" />
+          </motion.h1>
+          <motion.p 
+            className="text-xs text-muted-foreground"
+            initial={{ x: -20, opacity: 0 }}
+            animate={{ x: 0, opacity: 1 }}
+            transition={{ delay: 0.2, duration: 0.5 }}
+          >
+            {marketName} • {timeframe} • {candles.length} candles
+          </motion.p>
         </div>
-        <div className="flex items-center gap-2">
+        <motion.div 
+          className="flex items-center gap-2"
+          initial={{ x: 20, opacity: 0 }}
+          animate={{ x: 0, opacity: 1 }}
+          transition={{ delay: 0.1, duration: 0.5 }}
+        >
           {/* Connection Status */}
           <div className={`flex items-center gap-1 px-2 py-1 rounded-full text-[10px] ${
             derivApi.isConnected ? 'bg-profit/20 text-profit' : 'bg-loss/20 text-loss'
@@ -2253,14 +2295,20 @@ export default function TradingChart() {
             {showChart ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
             {showChart ? "Hide Chart" : "Show Chart"}
           </Button>
-          <Badge className="font-mono text-sm" variant="outline">
+          <Badge className="font-mono text-sm animate-glow" variant="outline">
             {currentPrice.toFixed(4)}
           </Badge>
-        </div>
-      </div>
+        </motion.div>
+      </motion.div>
 
-      {/* Market Selector */}
-      <div className="bg-card border border-border rounded-xl p-3">
+      {/* Market Selector with Animation */}
+      <motion.div 
+        variants={fadeInLeftVariants}
+        initial="hidden"
+        animate={pageLoaded ? "visible" : "hidden"}
+        transition={{ delay: 0.05 }}
+        className="bg-card border border-border rounded-xl p-3"
+      >
         <div className="flex flex-wrap gap-1 mb-2">
           {GROUPS.map(g => (
             <Button key={g.value} size="sm" variant={groupFilter === g.value ? 'default' : 'outline'}
@@ -2273,51 +2321,63 @@ export default function TradingChart() {
           {filteredMarkets.map(m => (
             <Button key={m.symbol} size="sm"
               variant={symbol === m.symbol ? 'default' : 'ghost'}
-              className={`h-6 text-[9px] px-2 ${symbol === m.symbol ? 'bg-primary text-primary-foreground' : 'text-muted-foreground'}`}
+              className={`h-6 text-[9px] px-2 transition-all duration-200 hover:scale-105 ${symbol === m.symbol ? 'bg-primary text-primary-foreground' : 'text-muted-foreground'}`}
               onClick={() => setSymbol(m.symbol)}>
               {m.name}
             </Button>
           ))}
         </div>
-      </div>
+      </motion.div>
 
-      {/* Timeframe and Candle Count */}
-      <div className="flex flex-wrap gap-2 justify-between items-center">
+      {/* Timeframe and Candle Count - UPDATED with 20000 max candles */}
+      <motion.div 
+        variants={fadeInLeftVariants}
+        initial="hidden"
+        animate={pageLoaded ? "visible" : "hidden"}
+        transition={{ delay: 0.1 }}
+        className="flex flex-wrap gap-2 justify-between items-center"
+      >
         <div className="flex flex-wrap gap-1">
           {TIMEFRAMES.map(tf => (
             <Button key={tf} size="sm" variant={timeframe === tf ? 'default' : 'outline'}
-              className={`h-7 text-xs px-3 ${timeframe === tf ? 'bg-primary text-primary-foreground' : ''}`}
+              className={`h-7 text-xs px-3 transition-all duration-200 ${timeframe === tf ? 'bg-primary text-primary-foreground scale-105' : ''}`}
               onClick={() => setTimeframe(tf)}>
               {tf}
             </Button>
           ))}
         </div>
         <div className="flex items-center gap-2">
-          <label className="text-[10px] text-muted-foreground">Candles (1000-100000):</label>
+          <label className="text-[10px] text-muted-foreground">Candles (1000-20000):</label>
           <Select value={String(candleCount)} onValueChange={v => setCandleCount(Math.min(Math.max(parseInt(v), CANDLE_CONFIG.minCandles), CANDLE_CONFIG.maxCandles))}>
             <SelectTrigger className="h-7 text-xs w-28">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {[1000, 2000, 3000, 4000, 5000, 10000, 20000, 50000, 100000].map(c => (
+              {candleCountOptions.map(c => (
                 <SelectItem key={c} value={String(c)}>{c.toLocaleString()}</SelectItem>
               ))}
             </SelectContent>
           </Select>
         </div>
-      </div>
+      </motion.div>
 
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-4">
-        {/* LEFT: Chart + Info */}
-        <div className="xl:col-span-8 space-y-3">
+        {/* LEFT: Chart + Info - With Animation */}
+        <motion.div 
+          variants={fadeInLeftVariants}
+          initial="hidden"
+          animate={pageLoaded ? "visible" : "hidden"}
+          transition={{ delay: 0.15 }}
+          className="xl:col-span-8 space-y-3"
+        >
           {/* Candlestick Chart */}
           <AnimatePresence mode="wait">
             {showChart && (
               <motion.div
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: "auto" }}
-                exit={{ opacity: 0, height: 0 }}
-                transition={{ duration: 0.3 }}
+                initial={{ opacity: 0, height: 0, y: 20 }}
+                animate={{ opacity: 1, height: "auto", y: 0 }}
+                exit={{ opacity: 0, height: 0, y: -20 }}
+                transition={{ duration: 0.4, ease: "easeInOut" }}
                 className="overflow-hidden"
               >
                 <div className="bg-[#0D1117] border border-[#30363D] rounded-xl overflow-hidden">
@@ -2333,38 +2393,53 @@ export default function TradingChart() {
               <h3 className="text-xs font-semibold text-foreground flex items-center gap-1">
                 <LineChart className="w-3.5 h-3.5 text-primary" /> Indicators
               </h3>
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-6 text-[10px] gap-1"
-                onClick={() => setShowIndicatorPanel(!showIndicatorPanel)}
-              >
-                <Plus className="w-3 h-3" />
-                Add Indicator
-              </Button>
+              <motion.div whileTap={{ scale: 0.95 }}>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-6 text-[10px] gap-1"
+                  onClick={() => setShowIndicatorPanel(!showIndicatorPanel)}
+                >
+                  <Plus className="w-3 h-3" />
+                  Add Indicator
+                </Button>
+              </motion.div>
             </div>
             
-            {showIndicatorPanel && (
-              <div className="flex flex-wrap gap-2 p-2 bg-muted/30 rounded-lg">
-                {['RSI', 'BB', 'MA', 'MACD'].map(type => (
-                  <Button
-                    key={type}
-                    size="sm"
-                    variant="outline"
-                    className="h-6 text-[9px]"
-                    onClick={() => addIndicator(type as IndicatorType)}
-                    disabled={indicators.some(i => i.type === type)}
-                  >
-                    + {type}
-                  </Button>
-                ))}
-              </div>
-            )}
+            <AnimatePresence>
+              {showIndicatorPanel && (
+                <motion.div 
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  className="flex flex-wrap gap-2 p-2 bg-muted/30 rounded-lg"
+                >
+                  {['RSI', 'BB', 'MA', 'MACD'].map(type => (
+                    <Button
+                      key={type}
+                      size="sm"
+                      variant="outline"
+                      className="h-6 text-[9px]"
+                      onClick={() => addIndicator(type as IndicatorType)}
+                      disabled={indicators.some(i => i.type === type)}
+                    >
+                      + {type}
+                    </Button>
+                  ))}
+                </motion.div>
+              )}
+            </AnimatePresence>
             
             {indicators.length > 0 ? (
               <div className="space-y-1.5">
                 {indicators.map(indicator => (
-                  <div key={indicator.id} className="flex items-center justify-between p-1.5 bg-muted/20 rounded-lg">
+                  <motion.div 
+                    key={indicator.id} 
+                    initial={{ opacity: 0, x: -10 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: -10 }}
+                    className="flex items-center justify-between p-1.5 bg-muted/20 rounded-lg"
+                  >
                     <div className="flex items-center gap-2">
                       <Switch
                         checked={indicator.enabled}
@@ -2381,7 +2456,7 @@ export default function TradingChart() {
                     >
                       <X className="w-3 h-3" />
                     </Button>
-                  </div>
+                  </motion.div>
                 ))}
               </div>
             ) : (
@@ -2395,24 +2470,30 @@ export default function TradingChart() {
           <div className="grid grid-cols-3 md:grid-cols-7 gap-2">
             {[
               { label: 'Price', value: currentPrice.toFixed(4), color: 'text-foreground' },
-              { label: `Digit (${digitPositionText})`, value: String(lastDigit), color: 'text-primary' },
+              { label: 'Last Digit', value: String(lastDigit), color: 'text-primary' },
               { label: 'Support', value: support.toFixed(2), color: 'text-[#3FB950]' },
               { label: 'Resistance', value: resistance.toFixed(2), color: 'text-[#F85149]' },
               { label: 'BB Upper', value: bb.upper.toFixed(2), color: 'text-[#BC8CFF]' },
               { label: 'BB Middle', value: bb.middle.toFixed(2), color: 'text-[#BC8CFF]' },
               { label: 'BB Lower', value: bb.lower.toFixed(2), color: 'text-[#BC8CFF]' },
-            ].map(item => (
-              <div key={item.label} className="bg-card border border-border rounded-lg p-2 text-center">
+            ].map((item, idx) => (
+              <motion.div 
+                key={item.label} 
+                className="bg-card border border-border rounded-lg p-2 text-center"
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ delay: idx * 0.03 }}
+              >
                 <div className="text-[9px] text-muted-foreground">{item.label}</div>
                 <div className={`font-mono text-xs font-bold ${item.color}`}>{item.value}</div>
-              </div>
+              </motion.div>
             ))}
           </div>
 
           {/* Digit Analysis - Real-Time Updates */}
           <div className="bg-card border border-border rounded-xl p-3 space-y-3">
             <div className="flex items-center justify-between">
-              <h3 className="text-xs font-semibold text-foreground">Milliefx Digit Analysis (Real-Time)</h3>
+              <h3 className="text-xs font-semibold text-foreground">Ramzfx Digit Analysis (Real-Time)</h3>
               <div className="flex items-center gap-2">
                 <label className="text-[9px] text-muted-foreground">Tick Range:</label>
                 <Select value={String(tickRange)} onValueChange={v => setTickRange(parseInt(v))}>
@@ -2432,26 +2513,26 @@ export default function TradingChart() {
             </div>
 
             <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-              <div className="bg-[#D29922]/10 border border-[#D29922]/30 rounded-lg p-2">
+              <motion.div whileHover={{ scale: 1.02 }} className="bg-[#D29922]/10 border border-[#D29922]/30 rounded-lg p-2">
                 <div className="text-[9px] text-[#D29922]">Odd</div>
                 <div className="font-mono text-sm font-bold text-[#D29922]">{oddPercentage.toFixed(1)}%</div>
                 <div className="h-1.5 bg-muted rounded-full mt-1"><div className="h-full bg-[#D29922] rounded-full" style={{ width: `${oddPercentage}%` }} /></div>
-              </div>
-              <div className="bg-[#3FB950]/10 border border-[#3FB950]/30 rounded-lg p-2">
+              </motion.div>
+              <motion.div whileHover={{ scale: 1.02 }} className="bg-[#3FB950]/10 border border-[#3FB950]/30 rounded-lg p-2">
                 <div className="text-[9px] text-[#3FB950]">Even</div>
                 <div className="font-mono text-sm font-bold text-[#3FB950]">{evenPercentage.toFixed(1)}%</div>
                 <div className="h-1.5 bg-muted rounded-full mt-1"><div className="h-full bg-[#3FB950] rounded-full" style={{ width: `${evenPercentage}%` }} /></div>
-              </div>
-              <div className="bg-primary/10 border border-primary/30 rounded-lg p-2">
+              </motion.div>
+              <motion.div whileHover={{ scale: 1.02 }} className="bg-primary/10 border border-primary/30 rounded-lg p-2">
                 <div className="text-[9px] text-primary">Over 4 (5-9)</div>
                 <div className="font-mono text-sm font-bold text-primary">{overPercentage.toFixed(1)}%</div>
                 <div className="h-1.5 bg-muted rounded-full mt-1"><div className="h-full bg-primary rounded-full" style={{ width: `${overPercentage}%` }} /></div>
-              </div>
-              <div className="bg-[#D29922]/10 border border-[#D29922]/30 rounded-lg p-2">
+              </motion.div>
+              <motion.div whileHover={{ scale: 1.02 }} className="bg-[#D29922]/10 border border-[#D29922]/30 rounded-lg p-2">
                 <div className="text-[9px] text-[#D29922]">Under 5 (0-4)</div>
                 <div className="font-mono text-sm font-bold text-[#D29922]">{underPercentage.toFixed(1)}%</div>
                 <div className="h-1.5 bg-muted rounded-full mt-1"><div className="h-full bg-[#D29922] rounded-full" style={{ width: `${underPercentage}%` }} /></div>
-              </div>
+              </motion.div>
             </div>
 
             <div className="grid grid-cols-5 md:grid-cols-10 gap-1.5">
@@ -2463,7 +2544,10 @@ export default function TradingChart() {
                 const isBestMatch = d === mostCommon;
                 const isBestDiffer = d === leastCommon;
                 return (
-                  <button key={d}
+                  <motion.button 
+                    key={d}
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
                     onClick={() => { setSelectedPrediction(String(d)); }}
                     className={`relative rounded-lg p-2 text-center transition-all border cursor-pointer hover:ring-2 hover:ring-primary ${
                       selectedPrediction === String(d) ? 'ring-2 ring-primary' : ''
@@ -2482,47 +2566,53 @@ export default function TradingChart() {
                     {isBestDiffer && (
                       <Badge className="absolute -top-1 -left-1 text-[7px] px-1 bg-loss text-loss-foreground">Diff</Badge>
                     )}
-                  </button>
+                  </motion.button>
                 );
               })}
             </div>
             
             <div className="text-center text-[8px] text-muted-foreground animate-pulse">
-              🔄 Updating in real-time with each new tick • Using {digitPositionText} digit after decimal
+              🔄 Updating in real-time with each new tick
             </div>
           </div>
 
           {/* Strategic Recommendations */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-            <div className="bg-card border border-profit/30 rounded-lg p-2">
+            <motion.div whileHover={{ scale: 1.02 }} className="bg-card border border-profit/30 rounded-lg p-2">
               <div className="text-[9px] text-muted-foreground">Most Appearing </div>
               <div className="font-mono text-lg font-bold text-profit">{mostCommon}</div>
               <div className="text-[8px] text-muted-foreground">{percentages[mostCommon]?.toFixed(1)}% frequency</div>
-            </div>
-            <div className="bg-card border border-loss/30 rounded-lg p-2">
+            </motion.div>
+            <motion.div whileHover={{ scale: 1.02 }} className="bg-card border border-loss/30 rounded-lg p-2">
               <div className="text-[9px] text-muted-foreground">Least Appearing </div>
               <div className="font-mono text-lg font-bold text-loss">{leastCommon}</div>
               <div className="text-[8px] text-muted-foreground">{percentages[leastCommon]?.toFixed(1)}% frequency</div>
-            </div>
-            <div className="bg-card border border-[#D29922]/30 rounded-lg p-2">
+            </motion.div>
+            <motion.div whileHover={{ scale: 1.02 }} className="bg-card border border-[#D29922]/30 rounded-lg p-2">
               <div className="text-[9px] text-muted-foreground">Even/Odd</div>
               <div className={`font-mono text-lg font-bold ${evenPercentage > 50 ? 'text-[#3FB950]' : 'text-[#D29922]'}`}>
                 {evenPercentage > 50 ? 'EVEN' : 'ODD'}
               </div>
               <div className="text-[8px] text-muted-foreground">{Math.max(evenPercentage, oddPercentage).toFixed(1)}%</div>
-            </div>
-            <div className="bg-card border border-primary/30 rounded-lg p-2">
+            </motion.div>
+            <motion.div whileHover={{ scale: 1.02 }} className="bg-card border border-primary/30 rounded-lg p-2">
               <div className="text-[9px] text-muted-foreground">Over/Under</div>
               <div className={`font-mono text-lg font-bold ${overPercentage > 50 ? 'text-primary' : 'text-[#D29922]'}`}>
                 {overPercentage > 50 ? 'OVER' : 'UNDER'}
               </div>
               <div className="text-[8px] text-muted-foreground">{Math.max(overPercentage, underPercentage).toFixed(1)}%</div>
-            </div>
+            </motion.div>
           </div>
-        </div>
+        </motion.div>
 
-        {/* RIGHT: Signals + Bot + Last 26 Digits */}
-        <div className="xl:col-span-4 space-y-3">
+        {/* RIGHT: Signals + Bot + Last 26 Digits - With Animation */}
+        <motion.div 
+          variants={fadeInRightVariants}
+          initial="hidden"
+          animate={pageLoaded ? "visible" : "hidden"}
+          transition={{ delay: 0.2 }}
+          className="xl:col-span-4 space-y-3"
+        >
           {/* Voice AI Toggle */}
           <div className="bg-card border border-primary/30 rounded-xl p-3">
             <div className="flex items-center justify-between">
@@ -2555,7 +2645,7 @@ export default function TradingChart() {
 
           {/* Trading Signals */}
           <div className="grid grid-cols-2 gap-2">
-            <div className="bg-card border border-border rounded-xl p-3">
+            <motion.div whileHover={{ scale: 1.02 }} className="bg-card border border-border rounded-xl p-3">
               <div className="flex items-center gap-1 mb-1">
                 {riseSignal.direction === 'Rise' ? <TrendingUp className="w-3.5 h-3.5 text-profit" /> : <TrendingDown className="w-3.5 h-3.5 text-loss" />}
                 <span className="text-[10px] font-semibold">Rise/Fall</span>
@@ -2568,9 +2658,9 @@ export default function TradingChart() {
                 <div className={`h-full rounded-full ${riseSignal.direction === 'Rise' ? 'bg-profit' : 'bg-loss'}`}
                   style={{ width: `${riseSignal.confidence}%` }} />
               </div>
-            </div>
+            </motion.div>
 
-            <div className="bg-card border border-border rounded-xl p-3">
+            <motion.div whileHover={{ scale: 1.02 }} className="bg-card border border-border rounded-xl p-3">
               <div className="flex items-center gap-1 mb-1">
                 <Activity className="w-3.5 h-3.5 text-primary" />
                 <span className="text-[10px] font-semibold">Even/Odd</span>
@@ -2583,9 +2673,9 @@ export default function TradingChart() {
                 <div className={`h-full rounded-full ${eoSignal.direction === 'Even' ? 'bg-[#3FB950]' : 'bg-[#D29922]'}`}
                   style={{ width: `${eoSignal.confidence}%` }} />
               </div>
-            </div>
+            </motion.div>
 
-            <div className="bg-card border border-border rounded-xl p-3">
+            <motion.div whileHover={{ scale: 1.02 }} className="bg-card border border-border rounded-xl p-3">
               <div className="flex items-center gap-1 mb-1">
                 <ArrowUp className="w-3.5 h-3.5 text-primary" />
                 <span className="text-[10px] font-semibold">Over/Under</span>
@@ -2598,9 +2688,9 @@ export default function TradingChart() {
                 <div className={`h-full rounded-full ${ouSignal.direction === 'Over' ? 'bg-primary' : 'bg-[#D29922]'}`}
                   style={{ width: `${ouSignal.confidence}%` }} />
               </div>
-            </div>
+            </motion.div>
 
-            <div className="bg-card border border-border rounded-xl p-3">
+            <motion.div whileHover={{ scale: 1.02 }} className="bg-card border border-border rounded-xl p-3">
               <div className="flex items-center gap-1 mb-1">
                 <Target className="w-3.5 h-3.5 text-profit" />
                 <span className="text-[10px] font-semibold">Match Digit</span>
@@ -2610,11 +2700,14 @@ export default function TradingChart() {
               <div className="h-1.5 bg-muted rounded-full">
                 <div className="h-full bg-profit rounded-full" style={{ width: `${matchSignal.confidence}%` }} />
               </div>
-            </div>
+            </motion.div>
           </div>
 
           {/* AUTO BOT PANEL */}
-          <div className={`bg-card border rounded-xl p-3 space-y-2 ${botRunning ? 'border-profit glow-profit' : 'border-border'}`}>
+          <motion.div 
+            whileHover={{ boxShadow: "0 0 20px rgba(63, 185, 80, 0.1)" }}
+            className={`bg-card border rounded-xl p-3 space-y-2 transition-all duration-300 ${botRunning ? 'border-profit glow-profit' : 'border-border'}`}
+          >
             <div className="flex items-center justify-between">
               <h3 className="text-xs font-semibold text-foreground flex items-center gap-1">
                 <Zap className="w-3.5 h-3.5 text-primary" /> Ramzfx Speed Bot
@@ -2664,10 +2757,15 @@ export default function TradingChart() {
                 <label className="text-[9px] text-muted-foreground">Prediction (0-9)</label>
                 <div className="grid grid-cols-5 gap-1">
                   {Array.from({ length: 10 }, (_, i) => (
-                    <button key={i} disabled={botRunning} onClick={() => setBotConfig(p => ({ ...p, prediction: String(i) }))}
+                    <motion.button 
+                      key={i} 
+                      disabled={botRunning} 
+                      onClick={() => setBotConfig(p => ({ ...p, prediction: String(i) }))}
+                      whileHover={{ scale: 1.05 }}
+                      whileTap={{ scale: 0.95 }}
                       className={`h-6 rounded text-[10px] font-mono font-bold transition-all ${
                         botConfig.prediction === String(i) ? 'bg-primary text-primary-foreground' : 'bg-muted text-foreground hover:bg-secondary'
-                      }`}>{i}</button>
+                      }`}>{i}</motion.button>
                   ))}
                 </div>
               </div>
@@ -2946,7 +3044,11 @@ export default function TradingChart() {
             </div>
 
             {botRunning && (
-              <div className="grid grid-cols-3 gap-1 text-center">
+              <motion.div 
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="grid grid-cols-3 gap-1 text-center"
+              >
                 <div className="bg-muted/30 rounded p-1">
                   <div className="text-[7px] text-muted-foreground">Stake</div>
                   <div className="font-mono text-[10px] font-bold text-foreground">${botStats.currentStake.toFixed(2)}</div>
@@ -2961,7 +3063,7 @@ export default function TradingChart() {
                     {botStats.pnl >= 0 ? '+' : ''}{botStats.pnl.toFixed(2)}
                   </div>
                 </div>
-              </div>
+              </motion.div>
             )}
 
             <div className="flex gap-2">
@@ -2980,7 +3082,7 @@ export default function TradingChart() {
                 </>
               )}
             </div>
-          </div>
+          </motion.div>
 
           {/* Last 26 Digits - Filtration Chamber with Number Toggle */}
           <div className="bg-card border border-border rounded-xl p-3">
@@ -3185,7 +3287,7 @@ export default function TradingChart() {
               )}
             </div>
             <div className="text-center text-[8px] text-muted-foreground mt-2">
-              🔄 Updates with every tick • Latest digit highlighted • Using {digitPositionText} digit after decimal
+              🔄 Updates with every tick • Latest digit highlighted
               {showNumbersInFiltration && " • Over (5-9) Green | Under (0-4) Red"}
             </div>
           </div>
@@ -3258,11 +3360,16 @@ export default function TradingChart() {
                     : '';
                   
                   return (
-                    <div key={t.id} className={`flex items-center justify-between text-[9px] p-1.5 rounded-lg border ${
-                      t.status === 'open' ? 'border-primary/30 bg-primary/5' :
-                      t.status === 'won' ? 'border-profit/30 bg-profit/5' :
-                      'border-loss/30 bg-loss/5'
-                    } ${virtualStatusClass} ${isVirtualTrade ? 'border-dashed' : ''}`}>
+                    <motion.div 
+                      key={t.id} 
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: "auto" }}
+                      className={`flex items-center justify-between text-[9px] p-1.5 rounded-lg border ${
+                        t.status === 'open' ? 'border-primary/30 bg-primary/5' :
+                        t.status === 'won' ? 'border-profit/30 bg-profit/5' :
+                        'border-loss/30 bg-loss/5'
+                      } ${virtualStatusClass} ${isVirtualTrade ? 'border-dashed' : ''}`}
+                    >
                       <div className="flex items-center gap-1.5 flex-wrap">
                         <span className={`font-bold ${t.status === 'won' ? 'text-profit' : t.status === 'lost' ? 'text-loss' : 'text-primary'}`}>
                           {t.status === 'open' ? '⏳' : t.status === 'won' ? '✅' : '❌'}
@@ -3297,7 +3404,7 @@ export default function TradingChart() {
                       <span className={`font-mono font-bold ${isVirtualTrade ? (t.status === 'won' ? 'text-green-400' : 'text-red-400') : (t.profit >= 0 ? 'text-profit' : 'text-loss')}`}>
                         {t.status === 'open' ? '...' : isVirtualTrade ? (t.status === 'won' ? 'WIN' : 'LOSS') : `${t.profit >= 0 ? '+' : ''}$${t.profit.toFixed(2)}`}
                       </span>
-                    </div>
+                    </motion.div>
                   );
                 })}
               </div>
@@ -3337,8 +3444,8 @@ export default function TradingChart() {
               </div>
             </div>
           </div>
-        </div>
+        </motion.div>
       </div>
-    </div>
+    </motion.div>
   );
 }
