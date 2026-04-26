@@ -175,7 +175,7 @@ export default function TopNavbar() {
       <div className="border-t border-gray-800 bg-black">
         {/* Scrollable container */}
         <div className="overflow-x-auto overflow-y-visible scrollbar-thin scrollbar-thumb-gray-700 scrollbar-track-transparent hover:scrollbar-thumb-gray-600">
-          <nav className="flex items-center gap-[14px] px-4 py-2 min-w-max max-w-[1920px] mx-auto">
+          <nav className="flex items-center gap-[18px] px-6 py-2 min-w-max max-w-[1920px] mx-auto">
             {navItems.map((item) => {
               return (
                 <NavLink
@@ -183,7 +183,7 @@ export default function TopNavbar() {
                   to={item.url}
                   end={item.url === '/'}
                   className={({ isActive }) => `
-                    group relative flex items-center gap-2.3 px-3 py-1.5 text-[5px] font-bold
+                    group relative flex items-center gap-2.9 px-3 py-1.5 text-[4px] font-bold
                     transition-all duration-300 ease-out transform
                     whitespace-nowrap shrink-0
                     border border-transparent rounded-[5%]
