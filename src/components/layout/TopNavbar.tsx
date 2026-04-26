@@ -21,7 +21,7 @@ import ThemeToggle from './ThemeToggle';
 
 const navItems = [
   { title: 'Dashboard', url: '/', icon: LayoutDashboard },
-  { title: 'Ultimate Bots', url: '/chart', icon: Activity },
+  { title: 'Ultimate 💥 2026-2027 Bot', url: '/chart', icon: Activity },
   { title: 'Ramzfx Analysistool', url: '/markets', icon: BarChart3 },
   { title: 'Free Bots', url: '/smart-bot', icon: Zap },
   { title: 'Advanced Tool $ Speed Bot', url: '/auto-trade', icon: Bot },
@@ -160,7 +160,7 @@ export default function TopNavbar() {
       </div>
 
       {/* NAV LINKS */}
-      <div className="bg-white border-t border-gray-800">
+      <div className="bg-black border-t border-gray-800">
         <div className="overflow-x-auto">
 
           <nav className="flex items-center px-4 h-12 min-w-max">
@@ -171,19 +171,39 @@ export default function TopNavbar() {
                 to={item.url}
                 end={item.url === '/'}
                 className={({ isActive }) => `
-                  group flex items-center gap-1.5
-                  px-3 py-2
-                  mx-[7px]
-                  text-[10px]
-                  font-medium
+                  group flex items-center gap-2
+                  
+                  px-4 py-2
+                  mx-2
+                  
+                  text-[11px]
+                  font-semibold
+                  
                   rounded-[5px]
                   border
+                  
                   transition-all duration-300 ease-in-out
                   whitespace-nowrap
-
+                  
                   ${isActive
-                    ? 'bg-blue-600 text-white border-blue-600 shadow-md scale-105'
-                    : 'bg-blue-500 text-white border-blue-500 hover:bg-white hover:text-blue-600 hover:border-blue-600 hover:shadow-lg hover:-translate-y-0.5'
+                    ? `
+                      bg-blue-600 
+                      text-white 
+                      border-blue-600 
+                      shadow-md 
+                      scale-105
+                    `
+                    : `
+                      bg-blue-500 
+                      text-white 
+                      border-blue-500 
+                      
+                      hover:bg-white 
+                      hover:text-blue-600 
+                      hover:border-blue-600 
+                      hover:shadow-lg 
+                      hover:-translate-y-[2px]
+                    `
                   }
                 `}
               >
@@ -191,14 +211,16 @@ export default function TopNavbar() {
                   <>
                     <item.icon
                       className={`
-                        w-3 h-3 transition-all duration-300
+                        w-3.5 h-3.5 
+                        transition-all duration-300
                         ${isActive
                           ? 'text-white'
                           : 'text-white group-hover:text-blue-600 group-hover:rotate-6'
                         }
                       `}
                     />
-                    <span className="transition-all duration-300 group-hover:tracking-wide">
+
+                    <span className="tracking-wide">
                       {item.title}
                     </span>
                   </>
@@ -212,4 +234,4 @@ export default function TopNavbar() {
       </div>
     </header>
   );
-        }
+   }
