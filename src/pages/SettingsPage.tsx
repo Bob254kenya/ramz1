@@ -1,4 +1,4 @@
-// File: src/components/bots/MultiStrategyBot.tsx
+// src/components/bots/MultiStrategyBot.tsx
 
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { derivApi, type MarketSymbol } from '@/services/deriv-api';
@@ -16,7 +16,8 @@ import {
   Play, StopCircle, Trash2, Scan, TrendingUp, TrendingDown,
   Activity, BarChart3, Brain, Zap, Shield, DollarSign, EyeOff, Eye,
   Volume2, VolumeX, Settings, Target, AlertCircle, CheckCircle2,
-  Sparkles, Flame, Gauge, ArrowUp, ArrowDown, CircleDot
+  Sparkles, Flame, Gauge, ArrowUp, ArrowDown, CircleDot, Filter,
+  ChevronDown, ChevronUp, Layers
 } from 'lucide-react';
 
 // ============================================
@@ -85,10 +86,14 @@ type StrategyType =
   | 'parabolic_sar'
   | 'smart_combo';
 
+type DirectionType = 'OVER' | 'UNDER' | 'EVEN' | 'ODD';
 type SignalStrength = 'STRONG' | 'MODERATE' | 'WEAK';
 
+// New: Direction Filter Type
+type DirectionFilter = 'ALL' | 'OVER_UNDER_ONLY' | 'EVEN_ODD_ONLY';
+
 interface Signal {
-  direction: 'OVER' | 'UNDER' | 'EVEN' | 'ODD';
+  direction: DirectionType;
   confidence: number;
   strength: SignalStrength;
   reasons: string[];
@@ -133,6 +138,14 @@ interface StrategyConfig {
   enabled: boolean;
   minConfidence: number;
   requireConfirmation: boolean;
+}
+
+// New: Entry Threshold Configuration
+interface EntryThresholds {
+  strongEntry: number;      // 70+ confidence - immediate entry
+  moderateEntry: number;    // 55-69 confidence - normal entry
+  minEntry: number;         // Minimum confidence to consider
+  requireMultipleSignals: boolean;  // Require multiple strategies to agree
 }
 
 // ============================================
@@ -202,7 +215,6 @@ const calculateBollingerBands = (prices: number[], period: number, stdDev: numbe
 };
 
 const calculateParabolicSAR = (prices: number[], highPrices: number[], lowPrices: number[]): number => {
-  // Simplified SAR calculation
   if (prices.length < 5) return prices[prices.length - 1] || 0;
   
   const lastPrice = prices[prices.length - 1];
@@ -218,7 +230,7 @@ const calculateParabolicSAR = (prices: number[], highPrices: number[], lowPrices
 };
 
 // ============================================
-// STRATEGY 1: TREND-BASED OVER/UNDER
+// ENHANCED STRATEGY 1: TREND-BASED OVER/UNDER
 // ============================================
 
 class TrendOverUnderStrategy {
@@ -236,21 +248,40 @@ class TrendOverUnderStrategy {
     let overConfidence = 0;
     let underConfidence = 0;
     
-    // SMA Trend Analysis
+    // Enhanced SMA Trend Analysis with multiple timeframes
     const isAboveSMA5 = currentPrice > sma5;
     const isAboveSMA10 = currentPrice > sma10;
-    const isBullishTrend = isAboveSMA5 && isAboveSMA10;
-    const isBearishTrend = !isAboveSMA5 && !isAboveSMA10;
+    const bullAlign = isAboveSMA5 && isAboveSMA10;
+    const bearAlign = !isAboveSMA5 && !isAboveSMA10;
     
-    if (isBullishTrend) {
-      overConfidence += 35;
-      reasons.push('Price above SMAs (bullish trend)');
-    } else if (isBearishTrend) {
-      underConfidence += 35;
-      reasons.push('Price below SMAs (bearish trend)');
+    // Check SMA slope
+    if (prices.length >= 10) {
+      const sma5Prev = calculateSMA(prices.slice(0, -5), 5);
+      const smaSlope = sma5 - sma5Prev;
+      if (smaSlope > 0 && bullAlign) {
+        overConfidence += 15;
+        reasons.push('SMA5 slope rising');
+      } else if (smaSlope < 0 && bearAlign) {
+        underConfidence += 15;
+        reasons.push('SMA5 slope falling');
+      }
     }
     
-    // Digit Flow Analysis
+    if (bullAlign) {
+      overConfidence += 35;
+      reasons.push('Price above both SMAs (strong bullish)');
+    } else if (bearAlign) {
+      underConfidence += 35;
+      reasons.push('Price below both SMAs (strong bearish)');
+    } else if (isAboveSMA5) {
+      overConfidence += 20;
+      reasons.push('Price above short-term SMA');
+    } else if (!isAboveSMA5) {
+      underConfidence += 20;
+      reasons.push('Price below short-term SMA');
+    }
+    
+    // Enhanced Digit Flow Analysis
     if (lastDigits.length >= 20) {
       const recentDigits = lastDigits.slice(-20);
       const overDigits = recentDigits.filter(d => d >= 5).length;
@@ -258,50 +289,87 @@ class TrendOverUnderStrategy {
       const overPercent = (overDigits / 20) * 100;
       const underPercent = (underDigits / 20) * 100;
       
-      if (overPercent >= 60) {
-        overConfidence += 30;
-        reasons.push(`${overPercent.toFixed(0)}% digits OVER in last 20 ticks`);
+      // Strong dominance
+      if (overPercent >= 70) {
+        overConfidence += 40;
+        reasons.push(`STRONG OVER dominance: ${overPercent.toFixed(0)}%`);
+      } else if (overPercent >= 60) {
+        overConfidence += 25;
+        reasons.push(`${overPercent.toFixed(0)}% OVER digits in last 20`);
+      } else if (underPercent >= 70) {
+        underConfidence += 40;
+        reasons.push(`STRONG UNDER dominance: ${underPercent.toFixed(0)}%`);
       } else if (underPercent >= 60) {
-        underConfidence += 30;
-        reasons.push(`${underPercent.toFixed(0)}% digits UNDER in last 20 ticks`);
+        underConfidence += 25;
+        reasons.push(`${underPercent.toFixed(0)}% UNDER digits in last 20`);
       }
       
-      // Consecutive digit check
-      const consecutiveOver = recentDigits.slice(-5).every(d => d >= 5);
-      const consecutiveUnder = recentDigits.slice(-5).every(d => d <= 4);
+      // Extended consecutive pattern detection
+      let longestOverStreak = 0, currentOverStreak = 0;
+      let longestUnderStreak = 0, currentUnderStreak = 0;
       
-      if (consecutiveOver) {
-        overConfidence += 20;
-        reasons.push('5+ consecutive OVER digits');
-      } else if (consecutiveUnder) {
-        underConfidence += 20;
-        reasons.push('5+ consecutive UNDER digits');
+      for (const digit of recentDigits) {
+        if (digit >= 5) {
+          currentOverStreak++;
+          currentUnderStreak = 0;
+          longestOverStreak = Math.max(longestOverStreak, currentOverStreak);
+        } else {
+          currentUnderStreak++;
+          currentOverStreak = 0;
+          longestUnderStreak = Math.max(longestUnderStreak, currentUnderStreak);
+        }
+      }
+      
+      if (longestOverStreak >= 4) {
+        overConfidence += 25;
+        reasons.push(`${longestOverStreak}+ consecutive OVER digits`);
+      } else if (longestOverStreak >= 3) {
+        overConfidence += 15;
+        reasons.push(`${longestOverStreak} consecutive OVER digits`);
+      }
+      
+      if (longestUnderStreak >= 4) {
+        underConfidence += 25;
+        reasons.push(`${longestUnderStreak}+ consecutive UNDER digits`);
+      } else if (longestUnderStreak >= 3) {
+        underConfidence += 15;
+        reasons.push(`${longestUnderStreak} consecutive UNDER digits`);
+      }
+      
+      // Momentum: last 5 vs previous 5
+      const last5 = recentDigits.slice(-5).filter(d => d >= 5).length;
+      const prev5 = recentDigits.slice(-10, -5).filter(d => d >= 5).length;
+      if (last5 > prev5 + 2) {
+        overConfidence += 15;
+        reasons.push('Increasing OVER momentum');
+      } else if (prev5 > last5 + 2) {
+        underConfidence += 15;
+        reasons.push('Increasing UNDER momentum');
       }
     }
     
-    // Determine direction
-    let direction: 'OVER' | 'UNDER' | null = null;
+    let direction: DirectionType | null = null;
     let confidence = 0;
     
     if (overConfidence > underConfidence && overConfidence >= this.config.minConfidence) {
       direction = 'OVER';
-      confidence = overConfidence;
+      confidence = Math.min(overConfidence, 100);
     } else if (underConfidence > overConfidence && underConfidence >= this.config.minConfidence) {
       direction = 'UNDER';
-      confidence = underConfidence;
+      confidence = Math.min(underConfidence, 100);
     }
     
     if (!direction) return null;
     
     const strength: SignalStrength = 
-      confidence >= 70 ? 'STRONG' : confidence >= 50 ? 'MODERATE' : 'WEAK';
+      confidence >= 70 ? 'STRONG' : confidence >= 55 ? 'MODERATE' : 'WEAK';
     
     return { direction, confidence, strength, reasons };
   }
 }
 
 // ============================================
-// STRATEGY 2: EVEN/ODD MOMENTUM
+// ENHANCED STRATEGY 2: EVEN/ODD MOMENTUM
 // ============================================
 
 class EvenOddMomentumStrategy {
@@ -317,7 +385,7 @@ class EvenOddMomentumStrategy {
     let evenConfidence = 0;
     let oddConfidence = 0;
     
-    // Digit Distribution Analysis
+    // Enhanced Digit Distribution Analysis
     if (lastDigits.length >= 20) {
       const recentDigits = lastDigits.slice(-20);
       const evenDigits = recentDigits.filter(d => d % 2 === 0).length;
@@ -325,70 +393,134 @@ class EvenOddMomentumStrategy {
       const evenPercent = (evenDigits / 20) * 100;
       const oddPercent = (oddDigits / 20) * 100;
       
-      if (evenPercent >= 60) {
-        evenConfidence += 40;
-        reasons.push(`${evenPercent.toFixed(0)}% EVEN digits in last 20 ticks`);
-      } else if (oddPercent >= 60) {
-        oddConfidence += 40;
-        reasons.push(`${oddPercent.toFixed(0)}% ODD digits in last 20 ticks`);
+      if (evenPercent >= 75) {
+        evenConfidence += 50;
+        reasons.push(`EXTREME EVEN dominance: ${evenPercent.toFixed(0)}%`);
+      } else if (evenPercent >= 65) {
+        evenConfidence += 35;
+        reasons.push(`High EVEN dominance: ${evenPercent.toFixed(0)}%`);
+      } else if (evenPercent >= 55) {
+        evenConfidence += 20;
+        reasons.push(`${evenPercent.toFixed(0)}% EVEN digits`);
       }
       
-      // Consecutive pattern
-      const consecutiveEven = recentDigits.slice(-4).every(d => d % 2 === 0);
-      const consecutiveOdd = recentDigits.slice(-4).every(d => d % 2 !== 0);
+      if (oddPercent >= 75) {
+        oddConfidence += 50;
+        reasons.push(`EXTREME ODD dominance: ${oddPercent.toFixed(0)}%`);
+      } else if (oddPercent >= 65) {
+        oddConfidence += 35;
+        reasons.push(`High ODD dominance: ${oddPercent.toFixed(0)}%`);
+      } else if (oddPercent >= 55) {
+        oddConfidence += 20;
+        reasons.push(`${oddPercent.toFixed(0)}% ODD digits`);
+      }
       
-      if (consecutiveEven) {
-        evenConfidence += 25;
-        reasons.push('4+ consecutive EVEN digits');
-      } else if (consecutiveOdd) {
-        oddConfidence += 25;
-        reasons.push('4+ consecutive ODD digits');
+      // Consecutive pattern analysis
+      let longestEvenStreak = 0, currentEvenStreak = 0;
+      let longestOddStreak = 0, currentOddStreak = 0;
+      
+      for (const digit of recentDigits) {
+        if (digit % 2 === 0) {
+          currentEvenStreak++;
+          currentOddStreak = 0;
+          longestEvenStreak = Math.max(longestEvenStreak, currentEvenStreak);
+        } else {
+          currentOddStreak++;
+          currentEvenStreak = 0;
+          longestOddStreak = Math.max(longestOddStreak, currentOddStreak);
+        }
+      }
+      
+      if (longestEvenStreak >= 4) {
+        evenConfidence += 30;
+        reasons.push(`${longestEvenStreak}+ consecutive EVEN digits`);
+      } else if (longestEvenStreak >= 3) {
+        evenConfidence += 20;
+        reasons.push(`${longestEvenStreak} consecutive EVEN digits`);
+      }
+      
+      if (longestOddStreak >= 4) {
+        oddConfidence += 30;
+        reasons.push(`${longestOddStreak}+ consecutive ODD digits`);
+      } else if (longestOddStreak >= 3) {
+        oddConfidence += 20;
+        reasons.push(`${longestOddStreak} consecutive ODD digits`);
       }
     }
     
-    // RSI Momentum Confirmation
-    if (rsi >= 55) {
-      evenConfidence += 20;
+    // Enhanced RSI Momentum Confirmation
+    if (rsi >= 65) {
+      evenConfidence += 25;
+      reasons.push(`Strong RSI ${rsi.toFixed(0)} (overbought momentum)`);
+    } else if (rsi >= 55) {
+      evenConfidence += 15;
       reasons.push(`RSI ${rsi.toFixed(0)} supports upward momentum`);
+    } else if (rsi <= 35) {
+      oddConfidence += 25;
+      reasons.push(`Weak RSI ${rsi.toFixed(0)} (oversold pressure)`);
     } else if (rsi <= 45) {
-      oddConfidence += 20;
+      oddConfidence += 15;
       reasons.push(`RSI ${rsi.toFixed(0)} suggests downward pressure`);
     }
     
-    // Price action
-    if (prices.length >= 3) {
-      const recentPriceChange = prices[prices.length - 1] - prices[prices.length - 3];
-      if (recentPriceChange > 0) {
-        evenConfidence += 15;
-        reasons.push('Rising price action');
-      } else if (recentPriceChange < 0) {
-        oddConfidence += 15;
-        reasons.push('Falling price action');
+    // Enhanced Price action
+    if (prices.length >= 5) {
+      const recentChange = ((prices[prices.length - 1] - prices[prices.length - 5]) / prices[prices.length - 5]) * 100;
+      if (recentChange > 0.5) {
+        evenConfidence += 20;
+        reasons.push(`Rising price (+${recentChange.toFixed(1)}%)`);
+      } else if (recentChange > 0.1) {
+        evenConfidence += 10;
+        reasons.push('Slight price increase');
+      } else if (recentChange < -0.5) {
+        oddConfidence += 20;
+        reasons.push(`Falling price (${recentChange.toFixed(1)}%)`);
+      } else if (recentChange < -0.1) {
+        oddConfidence += 10;
+        reasons.push('Slight price decrease');
       }
     }
     
-    let direction: 'EVEN' | 'ODD' | null = null;
+    // Specific digit patterns
+    if (lastDigits.length >= 5) {
+      const last5 = lastDigits.slice(-5);
+      const patternCheck = last5.join('');
+      // Look for alternating patterns that might predict next digit
+      const alternatingEvenOdd = last5.every((d, i) => i === 0 || (d % 2 !== last5[i-1] % 2));
+      if (alternatingEvenOdd) {
+        const lastWasEven = last5[last5.length-1] % 2 === 0;
+        if (lastWasEven) {
+          oddConfidence += 15;
+          reasons.push('Alternating pattern suggests ODD next');
+        } else {
+          evenConfidence += 15;
+          reasons.push('Alternating pattern suggests EVEN next');
+        }
+      }
+    }
+    
+    let direction: DirectionType | null = null;
     let confidence = 0;
     
     if (evenConfidence > oddConfidence && evenConfidence >= this.config.minConfidence) {
       direction = 'EVEN';
-      confidence = evenConfidence;
+      confidence = Math.min(evenConfidence, 100);
     } else if (oddConfidence > evenConfidence && oddConfidence >= this.config.minConfidence) {
       direction = 'ODD';
-      confidence = oddConfidence;
+      confidence = Math.min(oddConfidence, 100);
     }
     
     if (!direction) return null;
     
     const strength: SignalStrength = 
-      confidence >= 70 ? 'STRONG' : confidence >= 50 ? 'MODERATE' : 'WEAK';
+      confidence >= 70 ? 'STRONG' : confidence >= 55 ? 'MODERATE' : 'WEAK';
     
     return { direction, confidence, strength, reasons };
   }
 }
 
 // ============================================
-// STRATEGY 3: DIGIT REVERSAL
+// ENHANCED STRATEGY 3: DIGIT REVERSAL
 // ============================================
 
 class DigitReversalStrategy {
@@ -404,53 +536,89 @@ class DigitReversalStrategy {
     let overConfidence = 0;
     let underConfidence = 0;
     
-    if (lastDigits.length < 10) return null;
+    if (lastDigits.length < 15) return null;
     
-    const recentDigits = lastDigits.slice(-10);
+    const recentDigits = lastDigits.slice(-15);
     
-    // Check for OVER streak reversal
-    const overStreak = recentDigits.slice(-5).every(d => d >= 5);
+    // Enhanced streak detection for OVER
     const overStreakLength = this.getConsecutiveStreak(recentDigits, true);
-    
-    if (overStreak || overStreakLength >= 3) {
-      underConfidence += 50;
-      reasons.push(`${overStreakLength}+ OVER streak, expecting UNDER reversal`);
+    if (overStreakLength >= 5) {
+      underConfidence += 60;
+      reasons.push(`LONG OVER streak (${overStreakLength}), high probability UNDER reversal`);
+    } else if (overStreakLength >= 4) {
+      underConfidence += 45;
+      reasons.push(`${overStreakLength} OVER streak, expecting UNDER`);
+    } else if (overStreakLength >= 3) {
+      underConfidence += 25;
+      reasons.push(`${overStreakLength}+ OVER streak, likely UNDER reversal`);
     }
     
-    // Check for UNDER streak reversal
-    const underStreak = recentDigits.slice(-5).every(d => d <= 4);
+    // Enhanced streak detection for UNDER
     const underStreakLength = this.getConsecutiveStreak(recentDigits, false);
-    
-    if (underStreak || underStreakLength >= 3) {
-      overConfidence += 50;
-      reasons.push(`${underStreakLength}+ UNDER streak, expecting OVER reversal`);
+    if (underStreakLength >= 5) {
+      overConfidence += 60;
+      reasons.push(`LONG UNDER streak (${underStreakLength}), high probability OVER reversal`);
+    } else if (underStreakLength >= 4) {
+      overConfidence += 45;
+      reasons.push(`${underStreakLength} UNDER streak, expecting OVER`);
+    } else if (underStreakLength >= 3) {
+      overConfidence += 25;
+      reasons.push(`${underStreakLength}+ UNDER streak, likely OVER reversal`);
     }
     
-    // Check for digit exhaustion
+    // Extreme digit detection
     const lastDigit = recentDigits[recentDigits.length - 1];
-    if (lastDigit === 0 || lastDigit === 1) {
+    if (lastDigit === 0) {
+      overConfidence += 35;
+      reasons.push('Digit 0 (extreme low) → STRONG reversal expected UP');
+    } else if (lastDigit === 1) {
       overConfidence += 20;
-      reasons.push(`Very low digit ${lastDigit}, likely to revert higher`);
-    } else if (lastDigit === 8 || lastDigit === 9) {
+      reasons.push('Digit 1 (very low) → likely reversal up');
+    } else if (lastDigit === 9) {
+      underConfidence += 35;
+      reasons.push('Digit 9 (extreme high) → STRONG reversal expected DOWN');
+    } else if (lastDigit === 8) {
       underConfidence += 20;
-      reasons.push(`Very high digit ${lastDigit}, likely to revert lower`);
+      reasons.push('Digit 8 (very high) → likely reversal down');
     }
     
-    let direction: 'OVER' | 'UNDER' | null = null;
+    // Pattern exhaustion - two same extremes in a row
+    if (recentDigits.length >= 2 && recentDigits[recentDigits.length - 1] === recentDigits[recentDigits.length - 2]) {
+      const lastTwo = recentDigits[recentDigits.length - 1];
+      if (lastTwo <= 1) {
+        overConfidence += 25;
+        reasons.push(`Double ${lastTwo} (extreme low), strong reversal signal`);
+      } else if (lastTwo >= 8) {
+        underConfidence += 25;
+        reasons.push(`Double ${lastTwo} (extreme high), strong reversal signal`);
+      }
+    }
+    
+    // Mean reversion from recent extreme values
+    const last5Avg = recentDigits.slice(-5).reduce((a, b) => a + b, 0) / 5;
+    if (last5Avg <= 2) {
+      overConfidence += 20;
+      reasons.push(`Recent average digit ${last5Avg.toFixed(1)} (very low), mean reversion up`);
+    } else if (last5Avg >= 7) {
+      underConfidence += 20;
+      reasons.push(`Recent average digit ${last5Avg.toFixed(1)} (very high), mean reversion down`);
+    }
+    
+    let direction: DirectionType | null = null;
     let confidence = 0;
     
     if (overConfidence > underConfidence && overConfidence >= this.config.minConfidence) {
       direction = 'OVER';
-      confidence = overConfidence;
+      confidence = Math.min(overConfidence, 100);
     } else if (underConfidence > overConfidence && underConfidence >= this.config.minConfidence) {
       direction = 'UNDER';
-      confidence = underConfidence;
+      confidence = Math.min(underConfidence, 100);
     }
     
     if (!direction) return null;
     
     const strength: SignalStrength = 
-      confidence >= 70 ? 'STRONG' : confidence >= 50 ? 'MODERATE' : 'WEAK';
+      confidence >= 70 ? 'STRONG' : confidence >= 55 ? 'MODERATE' : 'WEAK';
     
     return { direction, confidence, strength, reasons };
   }
@@ -470,7 +638,7 @@ class DigitReversalStrategy {
 }
 
 // ============================================
-// STRATEGY 4: BOLLINGER BANDS PRESSURE
+// ENHANCED STRATEGY 4: BOLLINGER BANDS PRESSURE
 // ============================================
 
 class BollingerPressureStrategy {
@@ -487,76 +655,104 @@ class BollingerPressureStrategy {
     let overConfidence = 0;
     let underConfidence = 0;
     
-    // Bollinger Band position analysis
-    const distanceToUpper = ((bollingerUpper - currentPrice) / bollingerUpper) * 100;
-    const distanceToLower = ((currentPrice - bollingerLower) / currentPrice) * 100;
+    // Enhanced Bollinger Band position analysis
+    const bandWidth = bollingerUpper - bollingerLower;
+    const positionInBand = (currentPrice - bollingerLower) / bandWidth;
     
-    if (distanceToUpper < 1) {
-      // Price touching upper band - expect reversal to UNDER
-      underConfidence += 45;
-      reasons.push('Price at upper Bollinger Band, expecting reversal down');
-    } else if (distanceToLower < 1) {
-      // Price touching lower band - expect reversal to OVER
-      overConfidence += 45;
-      reasons.push('Price at lower Bollinger Band, expecting reversal up');
-    } else if (currentPrice > bollingerMiddle) {
-      overConfidence += 20;
-      reasons.push('Price above middle band (bullish pressure)');
-    } else if (currentPrice < bollingerMiddle) {
-      underConfidence += 20;
-      reasons.push('Price below middle band (bearish pressure)');
+    if (positionInBand >= 0.95) {
+      // Price near upper band
+      underConfidence += 55;
+      reasons.push('Price at upper Bollinger Band (95%+), strong reversal expected DOWN');
+    } else if (positionInBand >= 0.85) {
+      underConfidence += 35;
+      reasons.push('Price near upper Bollinger Band, expecting reversal down');
+    } else if (positionInBand >= 0.7) {
+      underConfidence += 15;
+      reasons.push('Price in upper region of Bollinger Band');
+    } else if (positionInBand <= 0.05) {
+      overConfidence += 55;
+      reasons.push('Price at lower Bollinger Band (5%-), strong reversal expected UP');
+    } else if (positionInBand <= 0.15) {
+      overConfidence += 35;
+      reasons.push('Price near lower Bollinger Band, expecting reversal up');
+    } else if (positionInBand <= 0.3) {
+      overConfidence += 15;
+      reasons.push('Price in lower region of Bollinger Band');
     }
     
-    // Band width analysis (volatility)
-    const bandWidth = (bollingerUpper - bollingerLower) / bollingerMiddle;
-    if (bandWidth > 0.05) {
-      // High volatility - expect continuation
-      if (currentPrice > bollingerMiddle) {
-        overConfidence += 15;
-        reasons.push('High volatility with bullish pressure');
+    // Check for band squeeze (low volatility) - precedes big moves
+    const avgBandWidth = bandWidth / bollingerMiddle;
+    if (avgBandWidth < 0.02) {
+      if (positionInBand > 0.5) {
+        overConfidence += 20;
+        reasons.push('Band squeeze + upper position → breakout up expected');
       } else {
-        underConfidence += 15;
-        reasons.push('High volatility with bearish pressure');
+        underConfidence += 20;
+        reasons.push('Band squeeze + lower position → breakout down expected');
       }
     }
     
-    // Digit confirmation
+    // Bollinger Bounce pattern after touching band
+    if (prices.length >= 3) {
+      const prevPrice = prices[prices.length - 2];
+      const twoBackPrice = prices[prices.length - 3];
+      
+      const wasAtUpper = prevPrice >= bollingerUpper * 0.99;
+      const wasAtLower = prevPrice <= bollingerLower * 1.01;
+      const isMovingAway = Math.abs(currentPrice - prevPrice) > 0;
+      
+      if (wasAtUpper && currentPrice < prevPrice) {
+        underConfidence += 25;
+        reasons.push('Bounced off upper band → continuing DOWN');
+      } else if (wasAtLower && currentPrice > prevPrice) {
+        overConfidence += 25;
+        reasons.push('Bounced off lower band → continuing UP');
+      }
+    }
+    
+    // Digit confirmation with weighted recent digits
     if (lastDigits.length >= 10) {
       const recentDigits = lastDigits.slice(-10);
-      const overDigits = recentDigits.filter(d => d >= 5).length;
-      const underDigits = recentDigits.filter(d => d <= 4).length;
+      const weightedOverCount = recentDigits.reduce((sum, d, idx) => sum + (d >= 5 ? (idx + 1) : 0), 0);
+      const weightedUnderCount = recentDigits.reduce((sum, d, idx) => sum + (d <= 4 ? (idx + 1) : 0), 0);
       
-      if (overDigits > underDigits + 2) {
-        overConfidence += 20;
+      if (weightedOverCount > weightedUnderCount * 1.5) {
+        overConfidence += 25;
+        reasons.push('Digit flow strongly confirms OVER pressure');
+      } else if (weightedUnderCount > weightedOverCount * 1.5) {
+        underConfidence += 25;
+        reasons.push('Digit flow strongly confirms UNDER pressure');
+      } else if (weightedOverCount > weightedUnderCount) {
+        overConfidence += 12;
         reasons.push('Digit flow confirms OVER pressure');
-      } else if (underDigits > overDigits + 2) {
-        underConfidence += 20;
+      } else if (weightedUnderCount > weightedOverCount) {
+        underConfidence += 12;
         reasons.push('Digit flow confirms UNDER pressure');
       }
     }
     
-    let direction: 'OVER' | 'UNDER' | null = null;
+    let direction: DirectionType | null = null;
     let confidence = 0;
     
     if (overConfidence > underConfidence && overConfidence >= this.config.minConfidence) {
       direction = 'OVER';
-      confidence = overConfidence;
+      confidence = Math.min(overConfidence, 100);
     } else if (underConfidence > overConfidence && underConfidence >= this.config.minConfidence) {
       direction = 'UNDER';
-      confidence = underConfidence;
+      confidence = Math.min(underConfidence, 100);
     }
     
     if (!direction) return null;
     
     const strength: SignalStrength = 
-      confidence >= 70 ? 'STRONG' : confidence >= 50 ? 'MODERATE' : 'WEAK';
+      confidence >= 70 ? 'STRONG' : confidence >= 55 ? 'MODERATE' : 'WEAK';
     
     return { direction, confidence, strength, reasons };
   }
 }
 
 // ============================================
-// STRATEGY 5: PARABOLIC SAR FLIP
+// ENHANCED STRATEGY 5: PARABOLIC SAR FLIP
 // ============================================
 
 class ParabolicSARStrategy {
@@ -574,68 +770,107 @@ class ParabolicSARStrategy {
     let overConfidence = 0;
     let underConfidence = 0;
     
-    // SAR position relative to price
-    const isSarBelow = parabolicSar < currentPrice;
-    const isSarAbove = parabolicSar > currentPrice;
+    // Enhanced SAR position analysis
+    const sarBelow = parabolicSar < currentPrice;
+    const sarAbove = parabolicSar > currentPrice;
+    const distanceToSar = Math.abs(currentPrice - parabolicSar) / currentPrice * 100;
     
-    if (isSarBelow) {
-      overConfidence += 50;
-      reasons.push('SAR below price → UPWARD trend');
-    } else if (isSarAbove) {
-      underConfidence += 50;
-      reasons.push('SAR above price → DOWNWARD trend');
-    }
-    
-    // Check for SAR flip (trend change)
-    const previousSarBelow = parabolicSar < previousPrice;
-    const sarFlippedUp = !previousSarBelow && isSarBelow;
-    const sarFlippedDown = previousSarBelow && !isSarBelow;
-    
-    if (sarFlippedUp) {
-      overConfidence += 25;
-      reasons.push('SAR just flipped UP (new uptrend)');
-    } else if (sarFlippedDown) {
-      underConfidence += 25;
-      reasons.push('SAR just flipped DOWN (new downtrend)');
-    }
-    
-    // Digit confirmation
-    if (lastDigits.length >= 5) {
-      const recentDigits = lastDigits.slice(-5);
-      const overDigits = recentDigits.filter(d => d >= 5).length;
-      const underDigits = recentDigits.filter(d => d <= 4).length;
+    if (sarBelow) {
+      overConfidence += 45;
+      reasons.push(`SAR below price (${distanceToSar.toFixed(1)}% away) → UPWARD trend`);
       
-      if (isSarBelow && overDigits >= 3) {
+      if (distanceToSar > 1) {
         overConfidence += 15;
-        reasons.push('Digit flow confirms upward trend');
-      } else if (isSarAbove && underDigits >= 3) {
+        reasons.push('Strong SAR distance confirms uptrend');
+      }
+    } else if (sarAbove) {
+      underConfidence += 45;
+      reasons.push(`SAR above price (${distanceToSar.toFixed(1)}% away) → DOWNWARD trend`);
+      
+      if (distanceToSar > 1) {
         underConfidence += 15;
-        reasons.push('Digit flow confirms downward trend');
+        reasons.push('Strong SAR distance confirms downtrend');
       }
     }
     
-    let direction: 'OVER' | 'UNDER' | null = null;
+    // Enhanced SAR flip detection
+    const previousSarBelow = parabolicSar < previousPrice;
+    const sarFlippedUp = !previousSarBelow && sarBelow;
+    const sarFlippedDown = previousSarBelow && !sarBelow;
+    
+    if (sarFlippedUp) {
+      overConfidence += 35;
+      reasons.push('SAR JUST FLIPPED UP → NEW UPTREND SIGNAL');
+    } else if (sarFlippedDown) {
+      underConfidence += 35;
+      reasons.push('SAR JUST FLIPPED DOWN → NEW DOWNTREND SIGNAL');
+    }
+    
+    // Check for sustained trend momentum
+    if (prices.length >= 10) {
+      const recentPrices = prices.slice(-10);
+      let upDays = 0, downDays = 0;
+      for (let i = 1; i < recentPrices.length; i++) {
+        if (recentPrices[i] > recentPrices[i-1]) upDays++;
+        else if (recentPrices[i] < recentPrices[i-1]) downDays++;
+      }
+      
+      if (sarBelow && upDays >= 7) {
+        overConfidence += 20;
+        reasons.push('Strong sustained uptrend confirmed');
+      } else if (sarAbove && downDays >= 7) {
+        underConfidence += 20;
+        reasons.push('Strong sustained downtrend confirmed');
+      }
+    }
+    
+    // Enhanced digit confirmation with trend alignment
+    if (lastDigits.length >= 8) {
+      const recentDigits = lastDigits.slice(-8);
+      const overDigits = recentDigits.filter(d => d >= 5).length;
+      const underDigits = recentDigits.filter(d => d <= 4).length;
+      const overPercent = (overDigits / 8) * 100;
+      const underPercent = (underDigits / 8) * 100;
+      
+      if (sarBelow && overPercent >= 62.5) {
+        overConfidence += 20;
+        reasons.push(`Digit flow (${overPercent.toFixed(0)}% OVER) confirms uptrend`);
+      } else if (sarBelow && overPercent >= 50) {
+        overConfidence += 10;
+        reasons.push('Digit flow slightly confirms uptrend');
+      }
+      
+      if (sarAbove && underPercent >= 62.5) {
+        underConfidence += 20;
+        reasons.push(`Digit flow (${underPercent.toFixed(0)}% UNDER) confirms downtrend`);
+      } else if (sarAbove && underPercent >= 50) {
+        underConfidence += 10;
+        reasons.push('Digit flow slightly confirms downtrend');
+      }
+    }
+    
+    let direction: DirectionType | null = null;
     let confidence = 0;
     
     if (overConfidence > underConfidence && overConfidence >= this.config.minConfidence) {
       direction = 'OVER';
-      confidence = overConfidence;
+      confidence = Math.min(overConfidence, 100);
     } else if (underConfidence > overConfidence && underConfidence >= this.config.minConfidence) {
       direction = 'UNDER';
-      confidence = underConfidence;
+      confidence = Math.min(underConfidence, 100);
     }
     
     if (!direction) return null;
     
     const strength: SignalStrength = 
-      confidence >= 70 ? 'STRONG' : confidence >= 50 ? 'MODERATE' : 'WEAK';
+      confidence >= 70 ? 'STRONG' : confidence >= 55 ? 'MODERATE' : 'WEAK';
     
     return { direction, confidence, strength, reasons };
   }
 }
 
 // ============================================
-// STRATEGY 6: SMART COMBO (BEST OVERALL)
+// ENHANCED STRATEGY 6: SMART COMBO
 // ============================================
 
 class SmartComboStrategy {
@@ -646,7 +881,7 @@ class SmartComboStrategy {
   }
   
   analyze(data: MarketData): Signal | null {
-    const { sma5, sma10, prices, rsi, lastDigits, bollingerUpper, bollingerLower } = data;
+    const { sma5, sma10, prices, rsi, lastDigits, bollingerUpper, bollingerLower, bollingerMiddle } = data;
     const currentPrice = prices[prices.length - 1] || 0;
     const reasons: string[] = [];
     let overScore = 0;
@@ -654,32 +889,65 @@ class SmartComboStrategy {
     let evenScore = 0;
     let oddScore = 0;
     
-    // 1. TREND ANALYSIS (SMA)
+    // 1. ENHANCED TREND ANALYSIS
     const isBullishTrend = currentPrice > sma5 && currentPrice > sma10;
     const isBearishTrend = currentPrice < sma5 && currentPrice < sma10;
     
     if (isBullishTrend) {
-      overScore += 25;
+      overScore += 30;
       evenScore += 15;
-      reasons.push('Bullish SMA trend');
+      reasons.push('STRONG bullish SMA trend');
+      
+      // Check SMA alignment strength
+      if (sma5 > sma10) {
+        overScore += 10;
+        reasons.push('Golden cross (SMA5 > SMA10)');
+      }
     } else if (isBearishTrend) {
-      underScore += 25;
+      underScore += 30;
       oddScore += 15;
-      reasons.push('Bearish SMA trend');
+      reasons.push('STRONG bearish SMA trend');
+      
+      if (sma5 < sma10) {
+        underScore += 10;
+        reasons.push('Death cross (SMA5 < SMA10)');
+      }
+    } else if (currentPrice > sma5) {
+      overScore += 15;
+      reasons.push('Mild bullish (above SMA5)');
+    } else if (currentPrice < sma5) {
+      underScore += 15;
+      reasons.push('Mild bearish (below SMA5)');
     }
     
-    // 2. MOMENTUM (RSI)
-    if (rsi >= 55) {
-      overScore += 20;
+    // 2. ENHANCED MOMENTUM (RSI)
+    if (rsi >= 70) {
+      overScore += 25;
       evenScore += 20;
-      reasons.push(`RSI ${rsi.toFixed(0)} shows strong momentum`);
-    } else if (rsi <= 45) {
-      underScore += 20;
+      reasons.push(`Overbought RSI ${rsi.toFixed(0)} - continuation likely`);
+    } else if (rsi >= 60) {
+      overScore += 20;
+      evenScore += 15;
+      reasons.push(`Strong RSI ${rsi.toFixed(0)}`);
+    } else if (rsi >= 55) {
+      overScore += 12;
+      evenScore += 10;
+      reasons.push(`RSI ${rsi.toFixed(0)} supports upward`);
+    } else if (rsi <= 30) {
+      underScore += 25;
       oddScore += 20;
-      reasons.push(`RSI ${rsi.toFixed(0)} shows weak momentum`);
+      reasons.push(`Oversold RSI ${rsi.toFixed(0)} - continuation likely`);
+    } else if (rsi <= 40) {
+      underScore += 20;
+      oddScore += 15;
+      reasons.push(`Weak RSI ${rsi.toFixed(0)}`);
+    } else if (rsi <= 45) {
+      underScore += 12;
+      oddScore += 10;
+      reasons.push(`RSI ${rsi.toFixed(0)} suggests downward`);
     }
     
-    // 3. DIGIT FLOW
+    // 3. ENHANCED DIGIT FLOW
     if (lastDigits.length >= 20) {
       const recentDigits = lastDigits.slice(-20);
       const overDigits = recentDigits.filter(d => d >= 5).length;
@@ -692,59 +960,97 @@ class SmartComboStrategy {
       const evenPercent = (evenDigits / 20) * 100;
       const oddPercent = (oddDigits / 20) * 100;
       
-      if (overPercent >= 60) {
-        overScore += 30;
-        reasons.push(`${overPercent.toFixed(0)}% OVER digits in last 20 ticks`);
-      } else if (underPercent >= 60) {
-        underScore += 30;
-        reasons.push(`${underPercent.toFixed(0)}% UNDER digits in last 20 ticks`);
+      if (overPercent >= 65) {
+        overScore += 35;
+        reasons.push(`STRONG OVER dominance: ${overPercent.toFixed(0)}%`);
+      } else if (overPercent >= 55) {
+        overScore += 20;
+        reasons.push(`${overPercent.toFixed(0)}% OVER digits`);
       }
       
-      if (evenPercent >= 60) {
-        evenScore += 25;
+      if (underPercent >= 65) {
+        underScore += 35;
+        reasons.push(`STRONG UNDER dominance: ${underPercent.toFixed(0)}%`);
+      } else if (underPercent >= 55) {
+        underScore += 20;
+        reasons.push(`${underPercent.toFixed(0)}% UNDER digits`);
+      }
+      
+      if (evenPercent >= 65) {
+        evenScore += 30;
+        reasons.push(`STRONG EVEN dominance: ${evenPercent.toFixed(0)}%`);
+      } else if (evenPercent >= 55) {
+        evenScore += 15;
         reasons.push(`${evenPercent.toFixed(0)}% EVEN digits`);
-      } else if (oddPercent >= 60) {
-        oddScore += 25;
+      }
+      
+      if (oddPercent >= 65) {
+        oddScore += 30;
+        reasons.push(`STRONG ODD dominance: ${oddPercent.toFixed(0)}%`);
+      } else if (oddPercent >= 55) {
+        oddScore += 15;
         reasons.push(`${oddPercent.toFixed(0)}% ODD digits`);
       }
     }
     
-    // 4. VOLATILITY (Bollinger Bands)
-    const distanceToUpper = ((bollingerUpper - currentPrice) / bollingerUpper) * 100;
-    const distanceToLower = ((currentPrice - bollingerLower) / currentPrice) * 100;
+    // 4. VOLATILITY & BOLLINGER
+    const positionInBand = (currentPrice - bollingerLower) / (bollingerUpper - bollingerLower);
+    const bandWidth = (bollingerUpper - bollingerLower) / bollingerMiddle;
     
-    if (distanceToUpper < 2) {
-      underScore += 20;
+    if (positionInBand >= 0.85) {
+      underScore += 25;
       reasons.push('Price near upper Bollinger Band');
-    } else if (distanceToLower < 2) {
-      overScore += 20;
+    } else if (positionInBand <= 0.15) {
+      overScore += 25;
       reasons.push('Price near lower Bollinger Band');
     }
     
-    // Determine best direction based on highest score
-    const scores = {
-      OVER: overScore,
-      UNDER: underScore,
-      EVEN: evenScore,
-      ODD: oddScore
-    };
+    if (bandWidth > 0.05) {
+      if (positionInBand > 0.5) {
+        overScore += 15;
+        reasons.push('High volatility + upper position');
+      } else {
+        underScore += 15;
+        reasons.push('High volatility + lower position');
+      }
+    }
     
-    const bestDirection = Object.entries(scores).reduce((a, b) => a[1] > b[1] ? a : b);
-    const secondBest = Object.entries(scores).filter(d => d[0] !== bestDirection[0]).sort((a, b) => b[1] - a[1])[0];
+    // 5. RECENT PRICE MOMENTUM
+    if (prices.length >= 5) {
+      const momentum = (prices[prices.length - 1] - prices[prices.length - 5]) / prices[prices.length - 5] * 100;
+      if (momentum > 0.3) {
+        overScore += 20;
+        evenScore += 10;
+        reasons.push(`Strong upward momentum (+${momentum.toFixed(1)}%)`);
+      } else if (momentum < -0.3) {
+        underScore += 20;
+        oddScore += 10;
+        reasons.push(`Strong downward momentum (${momentum.toFixed(1)}%)`);
+      }
+    }
     
-    // Require clear winner and minimum confidence
+    // Determine best direction
+    const scores = { OVER: overScore, UNDER: underScore, EVEN: evenScore, ODD: oddScore };
+    const sortedDirections = Object.entries(scores).sort((a, b) => b[1] - a[1]);
+    const bestDirection = sortedDirections[0];
+    const secondBest = sortedDirections[1];
+    
+    // Easy entry conditions: strong signal or clear leader
+    const isStrongSignal = bestDirection[1] >= 70;
+    const isClearLeader = (bestDirection[1] - secondBest[1]) >= 20;
+    
+    if (!isStrongSignal && !isClearLeader) return null;
     if (bestDirection[1] < this.config.minConfidence) return null;
-    if (bestDirection[1] - secondBest[1] < 15) return null;
     
-    const confidence = bestDirection[1];
+    const confidence = Math.min(bestDirection[1], 100);
     const strength: SignalStrength = 
       confidence >= 75 ? 'STRONG' : confidence >= 60 ? 'MODERATE' : 'WEAK';
     
     return {
-      direction: bestDirection[0] as 'OVER' | 'UNDER' | 'EVEN' | 'ODD',
+      direction: bestDirection[0] as DirectionType,
       confidence,
       strength,
-      reasons
+      reasons: reasons.slice(0, 5)
     };
   }
 }
@@ -762,15 +1068,27 @@ export default function MultiStrategyBot() {
   const [showSettings, setShowSettings] = useState(false);
   const [showLogs, setShowLogs] = useState(true);
   const [soundEnabled, setSoundEnabled] = useState(true);
+  const [showStrategyFilter, setShowStrategyFilter] = useState(false);
   
-  // Strategy Configurations
+  // NEW: Direction Filter
+  const [directionFilter, setDirectionFilter] = useState<DirectionFilter>('ALL');
+  
+  // NEW: Entry Threshold Configuration
+  const [entryThresholds, setEntryThresholds] = useState<EntryThresholds>({
+    strongEntry: 70,
+    moderateEntry: 55,
+    minEntry: 50,
+    requireMultipleSignals: false
+  });
+  
+  // Strategy Configurations with enhanced thresholds
   const [strategyConfigs, setStrategyConfigs] = useState<Record<StrategyType, StrategyConfig>>({
-    trend_over_under: { enabled: true, minConfidence: 55, requireConfirmation: true },
-    even_odd_momentum: { enabled: true, minConfidence: 55, requireConfirmation: true },
-    digit_reversal: { enabled: true, minConfidence: 60, requireConfirmation: true },
-    bollinger_pressure: { enabled: true, minConfidence: 50, requireConfirmation: true },
-    parabolic_sar: { enabled: true, minConfidence: 55, requireConfirmation: true },
-    smart_combo: { enabled: true, minConfidence: 60, requireConfirmation: true }
+    trend_over_under: { enabled: true, minConfidence: 50, requireConfirmation: false },
+    even_odd_momentum: { enabled: true, minConfidence: 50, requireConfirmation: false },
+    digit_reversal: { enabled: true, minConfidence: 55, requireConfirmation: false },
+    bollinger_pressure: { enabled: true, minConfidence: 50, requireConfirmation: false },
+    parabolic_sar: { enabled: true, minConfidence: 50, requireConfirmation: false },
+    smart_combo: { enabled: true, minConfidence: 55, requireConfirmation: false }
   });
   
   // Risk Settings
@@ -891,22 +1209,18 @@ export default function MultiStrategyBot() {
       lastUpdate: Date.now()
     };
     
-    // Update digit history
     existing.lastDigits.push(digit);
     if (existing.lastDigits.length > DIGIT_HISTORY_SIZE) existing.lastDigits.shift();
     
-    // Update price history
     existing.prices.push(price);
     if (existing.prices.length > PRICE_HISTORY_SIZE) existing.prices.shift();
     
-    // Update counts
     if (digit % 2 === 0) existing.evenCount++;
     else existing.oddCount++;
     
     if (digit >= 5) existing.overCount++;
     else existing.underCount++;
     
-    // Calculate indicators
     if (existing.prices.length >= SMA_PERIODS.long) {
       existing.sma5 = calculateSMA(existing.prices, SMA_PERIODS.short);
       existing.sma10 = calculateSMA(existing.prices, SMA_PERIODS.medium);
@@ -981,43 +1295,164 @@ export default function MultiStrategyBot() {
     }
   }, [strategyConfigs]);
   
-  // Analyze all markets for signals
-  const analyzeMarkets = useCallback((): { signal: Signal; market: string; marketData: MarketData } | null => {
-    const bestSignals: { signal: Signal; market: string; marketData: MarketData; confidence: number }[] = [];
+  // NEW: Filter signal by direction preference
+  const filterSignalByDirection = useCallback((signal: Signal): Signal | null => {
+    if (directionFilter === 'ALL') return signal;
     
-    for (const [symbol, data] of marketDataRef.current) {
-      if (data.lastDigits.length < MIN_DIGITS_FOR_ANALYSIS) continue;
+    if (directionFilter === 'OVER_UNDER_ONLY') {
+      if (signal.direction === 'OVER' || signal.direction === 'UNDER') {
+        return signal;
+      }
+      return null;
+    }
+    
+    if (directionFilter === 'EVEN_ODD_ONLY') {
+      if (signal.direction === 'EVEN' || signal.direction === 'ODD') {
+        return signal;
+      }
+      return null;
+    }
+    
+    return signal;
+  }, [directionFilter]);
+  
+  // NEW: Easy entry detection - checks if signal meets easy entry criteria
+  const isEasyEntry = useCallback((signal: Signal): boolean => {
+    // Strong signals are always easy entries
+    if (signal.strength === 'STRONG' && signal.confidence >= entryThresholds.strongEntry) {
+      return true;
+    }
+    
+    // Moderate signals are easy entries if above threshold
+    if (signal.strength === 'MODERATE' && signal.confidence >= entryThresholds.moderateEntry) {
+      return true;
+    }
+    
+    return false;
+  }, [entryThresholds]);
+  
+  // NEW: Get all signals from all strategies for a market
+  const getAllSignalsForMarket = useCallback((data: MarketData): Array<{ strategy: StrategyType, signal: Signal }> => {
+    const signals: Array<{ strategy: StrategyType, signal: Signal }> = [];
+    
+    for (const [strategyType, config] of Object.entries(strategyConfigs)) {
+      if (!config.enabled) continue;
       
-      // Check all enabled strategies
-      for (const [strategyType, config] of Object.entries(strategyConfigs)) {
-        if (!config.enabled) continue;
-        
-        const strategy = getStrategy(strategyType as StrategyType);
-        const signal = strategy.analyze(data);
-        
-        if (signal && signal.confidence >= config.minConfidence) {
-          bestSignals.push({
-            signal,
-            market: symbol,
-            marketData: data,
-            confidence: signal.confidence
-          });
-        }
+      const strategy = getStrategy(strategyType as StrategyType);
+      const signal = strategy.analyze(data);
+      
+      if (signal && signal.confidence >= config.minConfidence) {
+        signals.push({ strategy: strategyType as StrategyType, signal });
       }
     }
     
-    if (bestSignals.length === 0) return null;
+    return signals;
+  }, [strategyConfigs, getStrategy]);
+  
+  // NEW: Multi-signal consensus analysis
+  const analyzeWithConsensus = useCallback((): { 
+    bestSignal: Signal | null; 
+    market: string; 
+    marketData: MarketData;
+    consensus: { direction: DirectionType; count: number; strategies: string[] }[];
+    easyEntry: boolean;
+  } | null => {
+    const marketSignals: Map<string, Array<{ strategy: StrategyType, signal: Signal }>> = new Map();
     
-    // Return the highest confidence signal
-    bestSignals.sort((a, b) => b.confidence - a.confidence);
-    const best = bestSignals[0];
+    // Collect signals from all markets
+    for (const [symbol, data] of marketDataRef.current) {
+      if (data.lastDigits.length < MIN_DIGITS_FOR_ANALYSIS) continue;
+      
+      const signals = getAllSignalsForMarket(data);
+      if (signals.length > 0) {
+        marketSignals.set(symbol, signals);
+      }
+    }
+    
+    if (marketSignals.size === 0) return null;
+    
+    // Analyze each market for best signal
+    const marketResults: Array<{
+      market: string;
+      marketData: MarketData;
+      bestSignal: Signal;
+      allSignals: Array<{ strategy: StrategyType, signal: Signal }>;
+    }> = [];
+    
+    for (const [symbol, signals] of marketSignals) {
+      // Group signals by direction
+      const directionGroups: Map<DirectionType, Array<{ strategy: StrategyType, signal: Signal }>> = new Map();
+      for (const item of signals) {
+        const dir = item.signal.direction;
+        if (!directionGroups.has(dir)) directionGroups.set(dir, []);
+        directionGroups.get(dir)!.push(item);
+      }
+      
+      // Calculate average confidence per direction
+      const directionAverages: Array<{ direction: DirectionType, avgConfidence: number, signals: Array<{ strategy: StrategyType, signal: Signal }> }> = [];
+      for (const [dir, dirSignals] of directionGroups) {
+        const avgConfidence = dirSignals.reduce((sum, s) => sum + s.signal.confidence, 0) / dirSignals.length;
+        directionAverages.push({ direction: dir, avgConfidence, signals: dirSignals });
+      }
+      
+      // Sort by average confidence
+      directionAverages.sort((a, b) => b.avgConfidence - a.avgConfidence);
+      
+      if (directionAverages.length === 0) continue;
+      
+      // Get best direction
+      const bestDir = directionAverages[0];
+      
+      // Create combined signal from best direction
+      const combinedReasons = bestDir.signals.flatMap(s => s.signal.reasons).slice(0, 5);
+      const bestSignal: Signal = {
+        direction: bestDir.direction,
+        confidence: Math.min(bestDir.avgConfidence, 100),
+        strength: bestDir.avgConfidence >= 70 ? 'STRONG' : bestDir.avgConfidence >= 55 ? 'MODERATE' : 'WEAK',
+        reasons: combinedReasons
+      };
+      
+      marketResults.push({
+        market: symbol,
+        marketData: marketDataRef.current.get(symbol)!,
+        bestSignal,
+        allSignals: signals
+      });
+    }
+    
+    if (marketResults.length === 0) return null;
+    
+    // Sort by signal confidence
+    marketResults.sort((a, b) => b.bestSignal.confidence - a.bestSignal.confidence);
+    const best = marketResults[0];
+    
+    // Filter by direction preference
+    const filteredSignal = filterSignalByDirection(best.bestSignal);
+    if (!filteredSignal) return null;
+    
+    // Check if this is an easy entry
+    const easyEntry = isEasyEntry(filteredSignal);
+    
+    // If requiring multiple signals, check if we have at least 2 strategies agreeing on direction
+    if (entryThresholds.requireMultipleSignals) {
+      const agreeingSignals = best.allSignals.filter(s => s.signal.direction === best.bestSignal.direction);
+      if (agreeingSignals.length < 2) return null;
+    }
     
     return {
-      signal: best.signal,
+      bestSignal: filteredSignal,
       market: best.market,
-      marketData: best.marketData
+      marketData: best.marketData,
+      consensus: Array.from(new Map(
+        best.allSignals.map(s => [s.signal.direction, s])
+      ).entries()).map(([dir, signals]) => ({
+        direction: dir,
+        count: best.allSignals.filter(s => s.signal.direction === dir).length,
+        strategies: best.allSignals.filter(s => s.signal.direction === dir).map(s => s.strategy)
+      })),
+      easyEntry
     };
-  }, [strategyConfigs, getStrategy]);
+  }, [getAllSignalsForMarket, filterSignalByDirection, isEasyEntry, entryThresholds.requireMultipleSignals]);
   
   // Execute trade
   const executeTrade = useCallback(async (
@@ -1030,7 +1465,6 @@ export default function MultiStrategyBot() {
       await derivApi.connect();
     }
     
-    // Map signal direction to contract type
     let contractType: string;
     let barrier: string | undefined;
     
@@ -1075,7 +1509,6 @@ export default function MultiStrategyBot() {
       const won = result.status === 'won';
       const pnl = result.profit;
       
-      // Update balance
       const newBalance = balanceRef.current + pnl;
       balanceRef.current = newBalance;
       netProfitRef.current += pnl;
@@ -1119,7 +1552,7 @@ export default function MultiStrategyBot() {
     }
   }, [activeStrategy, activeAccount, recordLoss, playSound, addLogEntry]);
   
-  // Main trading loop
+  // Main trading loop with easy entry focus
   const startBot = useCallback(async () => {
     if (!isAuthorized || isRunning) return;
     
@@ -1129,7 +1562,6 @@ export default function MultiStrategyBot() {
       return;
     }
     
-    // Reset state
     setIsRunning(true);
     runningRef.current = true;
     setBotStatus('scanning');
@@ -1141,7 +1573,6 @@ export default function MultiStrategyBot() {
     
     let currentStakeAmount = stake;
     let currentStep = 0;
-    let isInRecovery = false;
     let consecutiveLossCount = 0;
     
     const maxDaily = parseFloat(maxDailyLoss);
@@ -1150,14 +1581,12 @@ export default function MultiStrategyBot() {
     const slTarget = parseFloat(stopLoss);
     
     while (runningRef.current) {
-      // Check cooldown
       if (Date.now() < cooldownUntil) {
         setBotStatus('cooldown');
         await new Promise(r => setTimeout(r, 1000));
         continue;
       }
       
-      // Check TP/SL
       if (netProfitRef.current >= tpTarget) {
         playSound('warning');
         break;
@@ -1167,29 +1596,26 @@ export default function MultiStrategyBot() {
         break;
       }
       
-      // Check daily loss limit
       if (dailyLossRef.current >= maxDaily) {
         playSound('warning');
         break;
       }
       
-      // Check consecutive losses
       if (consecutiveLossCount >= maxConsecutive) {
         playSound('warning');
         setBotStatus('cooldown');
-        setCooldownUntil(Date.now() + 300000); // 5 min cooldown
+        setCooldownUntil(Date.now() + 300000);
         consecutiveLossCount = 0;
         continue;
       }
       
       setBotStatus('scanning');
       
-      // Analyze markets for signals
       let attempts = 0;
       let analysisResult = null;
       
       while (runningRef.current && !analysisResult && attempts < MAX_SCAN_ATTEMPTS) {
-        analysisResult = analyzeMarkets();
+        analysisResult = analyzeWithConsensus();
         if (!analysisResult) {
           await new Promise(r => setTimeout(r, SCAN_INTERVAL_MS));
           attempts++;
@@ -1198,60 +1624,57 @@ export default function MultiStrategyBot() {
       
       if (!analysisResult || !runningRef.current) continue;
       
-      const { signal, market, marketData } = analysisResult;
-      setCurrentSignal(signal);
+      const { bestSignal, market, marketData, consensus, easyEntry } = analysisResult;
+      setCurrentSignal(bestSignal);
       setBotStatus('signal_found');
-      playSound('signal');
       
-      // Small delay before trading
-      await new Promise(r => setTimeout(r, 500));
+      // Additional pause for easy entries vs normal entries
+      if (easyEntry) {
+        playSound('signal');
+        await new Promise(r => setTimeout(r, 300));
+      } else {
+        playSound('signal');
+        await new Promise(r => setTimeout(r, 500));
+      }
       
       if (!runningRef.current) break;
       
       setBotStatus('trading');
       
-      // Execute trade
       const { won, pnl } = await executeTrade(
-        signal,
+        bestSignal,
         market,
         currentStakeAmount,
         currentStep
       );
       
       if (won) {
-        // Reset after win
         currentStakeAmount = stake;
         currentStep = 0;
-        isInRecovery = false;
         consecutiveLossCount = 0;
         setCurrentStake(stake);
         setMartingaleStep(0);
         setInRecovery(false);
       } else {
-        // Handle loss
         consecutiveLossCount++;
         dailyLossRef.current += currentStakeAmount;
         
         if (martingaleEnabled && currentStep < parseInt(maxMartingaleSteps)) {
           currentStep++;
           currentStakeAmount = parseFloat((currentStakeAmount * parseFloat(martingaleMultiplier)).toFixed(2));
-          isInRecovery = true;
           setCurrentStake(currentStakeAmount);
           setMartingaleStep(currentStep);
           setInRecovery(true);
         } else {
-          // Reset after max steps
           currentStakeAmount = stake;
           currentStep = 0;
-          isInRecovery = false;
           setCurrentStake(stake);
           setMartingaleStep(0);
           setInRecovery(false);
         }
       }
       
-      // Small delay between trades
-      await new Promise(r => setTimeout(r, 1000));
+      await new Promise(r => setTimeout(r, easyEntry ? 800 : 1000));
     }
     
     setIsRunning(false);
@@ -1259,7 +1682,7 @@ export default function MultiStrategyBot() {
     setBotStatus('idle');
     setCurrentSignal(null);
   }, [isAuthorized, isRunning, baseStake, martingaleEnabled, martingaleMultiplier, maxMartingaleSteps,
-      takeProfit, stopLoss, maxDailyLoss, maxConsecutiveLosses, cooldownUntil, analyzeMarkets, executeTrade, playSound]);
+      takeProfit, stopLoss, maxDailyLoss, maxConsecutiveLosses, cooldownUntil, analyzeWithConsensus, executeTrade, playSound]);
   
   const stopBot = useCallback(() => {
     runningRef.current = false;
@@ -1278,9 +1701,9 @@ export default function MultiStrategyBot() {
   const winRate = totalTrades > 0 ? ((winningTrades / totalTrades) * 100).toFixed(1) : '0';
   
   const strategyNames: Record<StrategyType, { name: string; icon: React.ReactNode; description: string }> = {
-    trend_over_under: { name: 'Trend O/U', icon: <TrendingUp className="w-4 h-4" />, description: 'SMA-based trend following' },
-    even_odd_momentum: { name: 'Even/Odd', icon: <Activity className="w-4 h-4" />, description: 'Digit dominance momentum' },
-    digit_reversal: { name: 'Reversal', icon: <ArrowUp className="w-4 h-4" />, description: 'Streak reversal detection' },
+    trend_over_under: { name: 'Trend O/U', icon: <TrendingUp className="w-4 h-4" />, description: 'SMA-based trend' },
+    even_odd_momentum: { name: 'Even/Odd', icon: <Activity className="w-4 h-4" />, description: 'Digit momentum' },
+    digit_reversal: { name: 'Reversal', icon: <ArrowUp className="w-4 h-4" />, description: 'Streak reversal' },
     bollinger_pressure: { name: 'Bollinger', icon: <BarChart3 className="w-4 h-4" />, description: 'Volatility pressure' },
     parabolic_sar: { name: 'Parabolic', icon: <CircleDot className="w-4 h-4" />, description: 'SAR trend flips' },
     smart_combo: { name: 'SMART', icon: <Brain className="w-4 h-4" />, description: 'Multi-factor combo' }
@@ -1293,7 +1716,7 @@ export default function MultiStrategyBot() {
         <div className="max-w-7xl mx-auto space-y-4">
           {/* Header */}
           <div className="bg-gradient-to-r from-slate-900/80 to-slate-800/80 backdrop-blur-sm border border-slate-700/50 rounded-xl p-4">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between flex-wrap gap-3">
               <div className="flex items-center gap-3">
                 <div className="p-2 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-lg">
                   <Brain className="w-5 h-5 text-white" />
@@ -1302,10 +1725,16 @@ export default function MultiStrategyBot() {
                   <h1 className="text-xl font-bold bg-gradient-to-r from-purple-400 to-indigo-400 bg-clip-text text-transparent">
                     Multi-Strategy Trading Bot
                   </h1>
-                  <p className="text-xs text-slate-400">6 AI-Powered Strategies | Real-time Analysis</p>
+                  <p className="text-xs text-slate-400">6 AI-Powered Strategies | Easy Entry Detection</p>
                 </div>
               </div>
               <div className="flex items-center gap-3">
+                <button
+                  onClick={() => setShowStrategyFilter(!showStrategyFilter)}
+                  className={`p-2 rounded-lg transition-colors ${showStrategyFilter ? 'bg-purple-500/20 text-purple-400' : 'bg-slate-800/50 text-slate-400 hover:text-slate-200'}`}
+                >
+                  <Filter className="w-4 h-4" />
+                </button>
                 <button
                   onClick={() => setShowSettings(!showSettings)}
                   className="p-2 rounded-lg bg-slate-800/50 text-slate-400 hover:text-slate-200 transition-colors"
@@ -1324,6 +1753,101 @@ export default function MultiStrategyBot() {
               </div>
             </div>
           </div>
+          
+          {/* Direction Filter Panel */}
+          {showStrategyFilter && (
+            <div className="bg-gradient-to-br from-slate-900/90 to-slate-800/90 backdrop-blur-sm border border-slate-700/50 rounded-xl p-4 animate-fadeIn">
+              <h3 className="text-sm font-semibold text-slate-200 mb-3 flex items-center gap-2">
+                <Layers className="w-4 h-4 text-purple-400" /> Trading Direction Filter
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="text-[10px] text-slate-400 block mb-2">Direction Preference</label>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setDirectionFilter('ALL')}
+                      className={`flex-1 px-3 py-2 rounded-lg text-xs font-medium transition-all ${
+                        directionFilter === 'ALL'
+                          ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-lg'
+                          : 'bg-slate-800/50 text-slate-400 hover:bg-slate-700/50'
+                      }`}
+                    >
+                      ALL Directions
+                    </button>
+                    <button
+                      onClick={() => setDirectionFilter('OVER_UNDER_ONLY')}
+                      className={`flex-1 px-3 py-2 rounded-lg text-xs font-medium transition-all ${
+                        directionFilter === 'OVER_UNDER_ONLY'
+                          ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-lg'
+                          : 'bg-slate-800/50 text-slate-400 hover:bg-slate-700/50'
+                      }`}
+                    >
+                      OVER / UNDER Only
+                    </button>
+                    <button
+                      onClick={() => setDirectionFilter('EVEN_ODD_ONLY')}
+                      className={`flex-1 px-3 py-2 rounded-lg text-xs font-medium transition-all ${
+                        directionFilter === 'EVEN_ODD_ONLY'
+                          ? 'bg-gradient-to-r from-amber-600 to-orange-600 text-white shadow-lg'
+                          : 'bg-slate-800/50 text-slate-400 hover:bg-slate-700/50'
+                      }`}
+                    >
+                      EVEN / ODD Only
+                    </button>
+                  </div>
+                  <p className="text-[9px] text-slate-500 mt-2">
+                    {directionFilter === 'ALL' && 'Trade all signal types (OVER, UNDER, EVEN, ODD)'}
+                    {directionFilter === 'OVER_UNDER_ONLY' && 'Only trade OVER and UNDER signals (digit boundaries)'}
+                    {directionFilter === 'EVEN_ODD_ONLY' && 'Only trade EVEN and ODD signals (parity-based)'}
+                  </p>
+                </div>
+                
+                <div>
+                  <label className="text-[10px] text-slate-400 block mb-2">Easy Entry Thresholds</label>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] text-slate-400">Strong Entry (≥)</span>
+                      <Input 
+                        type="number" 
+                        min="50" 
+                        max="100" 
+                        value={entryThresholds.strongEntry} 
+                        onChange={e => setEntryThresholds(prev => ({ ...prev, strongEntry: parseInt(e.target.value) || 70 }))}
+                        className="w-20 h-7 text-xs bg-slate-800/50"
+                      />
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] text-slate-400">Moderate Entry (≥)</span>
+                      <Input 
+                        type="number" 
+                        min="40" 
+                        max="100" 
+                        value={entryThresholds.moderateEntry} 
+                        onChange={e => setEntryThresholds(prev => ({ ...prev, moderateEntry: parseInt(e.target.value) || 55 }))}
+                        className="w-20 h-7 text-xs bg-slate-800/50"
+                      />
+                    </div>
+                  </div>
+                </div>
+                
+                <div>
+                  <label className="text-[10px] text-slate-400 block mb-2">Entry Conditions</label>
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] text-slate-400">Require multiple strategy agreement</span>
+                    <Switch 
+                      checked={entryThresholds.requireMultipleSignals} 
+                      onCheckedChange={(checked) => setEntryThresholds(prev => ({ ...prev, requireMultipleSignals: checked }))}
+                    />
+                  </div>
+                  <p className="text-[9px] text-slate-500 mt-2">
+                    {entryThresholds.requireMultipleSignals 
+                      ? 'Requires at least 2 strategies to agree on direction' 
+                      : 'Single strategy signals are accepted'}
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
           
           {/* Settings Panel */}
           {showSettings && (
@@ -1420,7 +1944,7 @@ export default function MultiStrategyBot() {
               currentSignal?.strength === 'MODERATE' ? 'border-amber-500/50' :
               'border-slate-700/50'
             } animate-fadeIn`}>
-              <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
                 <div className="flex items-center gap-2">
                   <div className={`p-2 rounded-lg ${
                     currentSignal?.strength === 'STRONG' ? 'bg-emerald-500/20' :
@@ -1430,7 +1954,8 @@ export default function MultiStrategyBot() {
                     {currentSignal ? (
                       currentSignal.direction === 'OVER' ? <TrendingUp className="w-5 h-5 text-emerald-400" /> :
                       currentSignal.direction === 'UNDER' ? <TrendingDown className="w-5 h-5 text-red-400" /> :
-                      <Activity className="w-5 h-5 text-purple-400" />
+                      currentSignal.direction === 'EVEN' ? <Activity className="w-5 h-5 text-purple-400" /> :
+                      <Activity className="w-5 h-5 text-orange-400" />
                     ) : (
                       <Scan className="w-5 h-5 text-amber-400 animate-pulse" />
                     )}
@@ -1440,18 +1965,26 @@ export default function MultiStrategyBot() {
                       {currentSignal ? `${currentSignal.direction} SIGNAL` : `${strategyNames[activeStrategy].name} ACTIVE`}
                     </h3>
                     <p className="text-[10px] text-slate-400">
-                      {currentSignal ? `${currentSignal.strength} • ${currentSignal.confidence}% confidence` : 'Scanning markets...'}
+                      {currentSignal ? `${currentSignal.strength} • ${currentSignal.confidence}% confidence` : 'Scanning for easy entries...'}
                     </p>
                   </div>
                 </div>
                 {currentSignal && (
-                  <Badge className={`text-[10px] ${
-                    currentSignal.strength === 'STRONG' ? 'bg-emerald-500/20 text-emerald-400' :
-                    currentSignal.strength === 'MODERATE' ? 'bg-amber-500/20 text-amber-400' :
-                    'bg-slate-500/20 text-slate-400'
-                  } border-0 px-3 py-1`}>
-                    {currentSignal.confidence}% confidence
-                  </Badge>
+                  <div className="flex gap-2">
+                    {isEasyEntry(currentSignal) && (
+                      <Badge className="bg-gradient-to-r from-emerald-500/20 to-green-500/20 text-emerald-400 border-0 px-3 py-1 text-[10px]">
+                        <Sparkles className="w-3 h-3 inline mr-1" />
+                        EASY ENTRY
+                      </Badge>
+                    )}
+                    <Badge className={`text-[10px] ${
+                      currentSignal.strength === 'STRONG' ? 'bg-emerald-500/20 text-emerald-400' :
+                      currentSignal.strength === 'MODERATE' ? 'bg-amber-500/20 text-amber-400' :
+                      'bg-slate-500/20 text-slate-400'
+                    } border-0 px-3 py-1`}>
+                      {currentSignal.confidence}% confidence
+                    </Badge>
+                  </div>
                 )}
               </div>
               
@@ -1469,7 +2002,7 @@ export default function MultiStrategyBot() {
               {!currentSignal && botStatus === 'scanning' && (
                 <div className="flex items-center gap-2 text-[11px] text-slate-400">
                   <div className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
-                  Analyzing {TRADING_MARKETS.length} markets for trading opportunities...
+                  Analyzing {TRADING_MARKETS.length} markets for {directionFilter === 'OVER_UNDER_ONLY' ? 'OVER/UNDER' : directionFilter === 'EVEN_ODD_ONLY' ? 'EVEN/ODD' : 'all'} entries...
                 </div>
               )}
             </div>
@@ -1591,7 +2124,8 @@ export default function MultiStrategyBot() {
                           <span className={`px-1 py-0.5 rounded text-[8px] font-bold ${
                             entry.direction === 'OVER' ? 'bg-emerald-500/20 text-emerald-400' :
                             entry.direction === 'UNDER' ? 'bg-red-500/20 text-red-400' :
-                            'bg-purple-500/20 text-purple-400'
+                            entry.direction === 'EVEN' ? 'bg-purple-500/20 text-purple-400' :
+                            'bg-orange-500/20 text-orange-400'
                           }`}>
                             {entry.direction}
                           </span>
@@ -1620,7 +2154,7 @@ export default function MultiStrategyBot() {
           )}
           
           {/* Toggle Logs Button */}
-          <div className="flex justify-center">
+          <div className="flex justify-center gap-4">
             <button
               onClick={() => setShowLogs(!showLogs)}
               className="text-[10px] text-slate-500 hover:text-slate-300 transition-colors flex items-center gap-1"
