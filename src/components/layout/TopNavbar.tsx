@@ -171,67 +171,77 @@ export default function TopNavbar() {
         </div>
       </div>
 
-      {/* Row 2: Navigation links with Blue/Pink styling */}
-      <nav className="flex items-center gap-1 px-4 pb-2 overflow-x-auto no-scrollbar max-w-[1920px] mx-auto">
-        {navItems.map((item, index) => {
-          // Assign different gradient colors based on index
-          const getIconGradient = () => {
-            const gradients = [
-              'from-blue-500 to-pink-500',
-              'from-pink-500 to-purple-500',
-              'from-blue-400 to-pink-400',
-              'from-purple-500 to-pink-500',
-              'from-blue-600 to-pink-600',
-              'from-sky-500 to-pink-500',
-              'from-indigo-500 to-pink-500',
-            ];
-            return gradients[index % gradients.length];
-          };
+      {/* Row 2: Navigation links with Horizontal Scroll & Fixed Height */}
+      <div className="relative border-t border-border/50">
+        {/* Gradient shadows for scroll indication */}
+        <div className="absolute left-0 top-0 bottom-0 w-8 bg-gradient-to-r from-background to-transparent pointer-events-none z-10 opacity-0 lg:opacity-100"></div>
+        <div className="absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-background to-transparent pointer-events-none z-10 opacity-0 lg:opacity-100"></div>
+        
+        {/* Scrollable container */}
+        <div className="overflow-x-auto overflow-y-visible scrollbar-thin scrollbar-thumb-primary/20 scrollbar-track-transparent hover:scrollbar-thumb-primary/40">
+          <nav className="flex items-center gap-0.5 px-4 min-w-max h-[42px] max-w-[1920px] mx-auto">
+            {navItems.map((item, index) => {
+              // Different gradient combinations for active state icons
+              const getIconGradient = () => {
+                const gradients = [
+                  'from-blue-500 to-pink-500',
+                  'from-pink-500 to-purple-500',
+                  'from-blue-400 to-pink-400',
+                  'from-purple-500 to-pink-500',
+                  'from-blue-600 to-pink-600',
+                  'from-sky-500 to-pink-500',
+                  'from-indigo-500 to-pink-500',
+                ];
+                return gradients[index % gradients.length];
+              };
 
-          return (
-            <NavLink
-              key={item.url}
-              to={item.url}
-              end={item.url === '/'}
-              className={({ isActive }) => `
-                group relative flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] 
-                transition-all duration-300 whitespace-nowrap shrink-0
-                ${isActive 
-                  ? 'bg-gradient-to-r from-blue-500/20 to-pink-500/20 text-transparent bg-clip-text font-semibold shadow-sm' 
-                  : 'text-muted-foreground hover:text-foreground'
-                }
-              `}
-              activeClassName="!bg-gradient-to-r !from-blue-500/20 !to-pink-500/20"
-            >
-              {({ isActive }) => (
-                <>
-                  <item.icon 
-                    className={`
-                      w-3.5 h-3.5 transition-all duration-300
-                      ${isActive 
-                        ? `bg-gradient-to-r ${getIconGradient()} bg-clip-text text-transparent` 
-                        : 'text-muted-foreground group-hover:text-pink-500 group-hover:scale-110'
-                      }
-                    `}
-                  />
-                  <span className={`
-                    relative transition-all duration-300
+              return (
+                <NavLink
+                  key={item.url}
+                  to={item.url}
+                  end={item.url === '/'}
+                  className={({ isActive }) => `
+                    group relative flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-medium
+                    transition-all duration-200 whitespace-nowrap shrink-0
+                    border border-transparent hover:border-primary/20
                     ${isActive 
-                      ? 'bg-gradient-to-r from-blue-500 to-pink-500 bg-clip-text text-transparent font-bold' 
-                      : 'group-hover:text-pink-500'
+                      ? 'bg-gradient-to-r from-blue-500/15 to-pink-500/15 text-transparent bg-clip-text shadow-sm border-primary/20' 
+                      : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
                     }
-                  `}>
-                    {item.title}
-                    {!isActive && (
-                      <span className="absolute bottom-0 left-0 w-0 h-0.5 bg-gradient-to-r from-blue-500 to-pink-500 transition-all duration-300 group-hover:w-full"></span>
-                    )}
-                  </span>
-                </>
-              )}
-            </NavLink>
-          );
-        })}
-      </nav>
+                  `}
+                  activeClassName="!bg-gradient-to-r !from-blue-500/15 !to-pink-500/15"
+                >
+                  {({ isActive }) => (
+                    <>
+                      <item.icon 
+                        className={`
+                          w-3.5 h-3.5 transition-all duration-200
+                          ${isActive 
+                            ? `bg-gradient-to-r ${getIconGradient()} bg-clip-text text-transparent` 
+                            : 'text-muted-foreground group-hover:text-pink-500 group-hover:scale-110'
+                          }
+                        `}
+                      />
+                      <span className={`
+                        relative transition-all duration-200
+                        ${isActive 
+                          ? 'bg-gradient-to-r from-blue-500 to-pink-500 bg-clip-text text-transparent font-semibold' 
+                          : 'group-hover:text-pink-500'
+                        }
+                      `}>
+                        {item.title}
+                        {!isActive && (
+                          <span className="absolute -bottom-1 left-0 w-0 h-0.5 bg-gradient-to-r from-blue-500 to-pink-500 transition-all duration-300 group-hover:w-full rounded-full"></span>
+                        )}
+                      </span>
+                    </>
+                  )}
+                </NavLink>
+              );
+            })}
+          </nav>
+        </div>
+      </div>
     </header>
   );
-  }
+            }
