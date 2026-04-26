@@ -861,7 +861,7 @@ const staggerContainerVariants = {
 
 export default function TradingChart() {
   const { isAuthorized, balance: apiBalance, refreshBalance } = useAuth();
-  const [showChart, setShowChart] = useState(true);
+  const [showChart, setShowChart] = useState(false);
   const [symbol, setSymbol] = useState('R_100');
   const [groupFilter, setGroupFilter] = useState('all');
   const [timeframe, setTimeframe] = useState('1m');
