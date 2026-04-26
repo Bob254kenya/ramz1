@@ -20,13 +20,62 @@ import SocialIcons from './SocialIcons';
 import ThemeToggle from './ThemeToggle';
 
 const navItems = [
-  { title: 'Dashboard', url: '/', icon: LayoutDashboard },
-  { title: 'Ultimate 💥 2026-2027 Bot', url: '/chart', icon: Activity },
-  { title: 'Ramzfx Analysistool', url: '/markets', icon: BarChart3 },
-  { title: 'Free Bots', url: '/smart-bot', icon: Zap },
-  { title: 'Advanced Tool $ Speed Bot', url: '/auto-trade', icon: Bot },
-  { title: 'Copy Trading', url: '/copy-trading', icon: Users },
-  { title: 'Multi-Strategy Bot', url: '/settings', icon: Settings },
+  {
+    title: 'Dashboard',
+    url: '/',
+    icon: LayoutDashboard,
+    bg: 'bg-blue-500',
+    border: 'border-blue-500',
+    hoverText: 'hover:text-blue-600',
+  },
+  {
+    title: 'Ultimate 💥 2026-2027 Bot',
+    url: '/chart',
+    icon: Activity,
+    bg: 'bg-purple-500',
+    border: 'border-purple-500',
+    hoverText: 'hover:text-purple-600',
+  },
+  {
+    title: 'Ramzfx Analysistool',
+    url: '/markets',
+    icon: BarChart3,
+    bg: 'bg-green-500',
+    border: 'border-green-500',
+    hoverText: 'hover:text-green-600',
+  },
+  {
+    title: 'Free Bots',
+    url: '/smart-bot',
+    icon: Zap,
+    bg: 'bg-yellow-500',
+    border: 'border-yellow-500',
+    hoverText: 'hover:text-yellow-600',
+  },
+  {
+    title: 'Advanced Tool $ Speed Bot',
+    url: '/auto-trade',
+    icon: Bot,
+    bg: 'bg-red-500',
+    border: 'border-red-500',
+    hoverText: 'hover:text-red-600',
+  },
+  {
+    title: 'Copy Trading',
+    url: '/copy-trading',
+    icon: Users,
+    bg: 'bg-pink-500',
+    border: 'border-pink-500',
+    hoverText: 'hover:text-pink-600',
+  },
+  {
+    title: 'Multi-Strategy Bot',
+    url: '/settings',
+    icon: Settings,
+    bg: 'bg-indigo-500',
+    border: 'border-indigo-500',
+    hoverText: 'hover:text-indigo-600',
+  },
 ];
 
 const getCurrencyFlag = (currency: string) => {
@@ -81,13 +130,9 @@ export default function TopNavbar() {
 
               {/* Balance */}
               <div className="flex items-center gap-1.5 bg-gray-900 rounded-lg px-3 py-1.5">
-                {!activeAccount.is_virtual && activeAccount.currency === 'USD' ? (
-                  <span>🇺🇸</span>
-                ) : (
-                  <span className="text-xs text-gray-400">
-                    {activeAccount.is_virtual ? '💲' : '💵'}
-                  </span>
-                )}
+                <span className="text-xs text-gray-400">
+                  {activeAccount.is_virtual ? '💲' : '💵'}
+                </span>
                 <span className={`font-mono text-sm font-bold ${balance >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                   ${balance.toFixed(2)}
                 </span>
@@ -172,54 +217,29 @@ export default function TopNavbar() {
                 end={item.url === '/'}
                 className={({ isActive }) => `
                   group flex items-center gap-2
-                  
                   px-4 py-2
                   mx-2
-                  
                   text-[11px]
                   font-semibold
-                  
                   rounded-[5px]
                   border
-                  
                   transition-all duration-300 ease-in-out
                   whitespace-nowrap
-                  
                   ${isActive
-                    ? `
-                      bg-blue-600 
-                      text-white 
-                      border-blue-600 
-                      shadow-md 
-                      scale-105
-                    `
-                    : `
-                      bg-blue-500 
-                      text-white 
-                      border-blue-500 
-                      
-                      hover:bg-white 
-                      hover:text-blue-600 
-                      hover:border-blue-600 
-                      hover:shadow-lg 
-                      hover:-translate-y-[2px]
-                    `
+                    ? `${item.bg} ${item.border} text-white shadow-md scale-105`
+                    : `${item.bg} ${item.border} text-white hover:bg-white ${item.hoverText} hover:shadow-lg hover:-translate-y-[2px]`
                   }
                 `}
               >
                 {({ isActive }) => (
                   <>
                     <item.icon
-                      className={`
-                        w-3.5 h-3.5 
-                        transition-all duration-300
-                        ${isActive
+                      className={`w-3.5 h-3.5 transition-all duration-300 ${
+                        isActive
                           ? 'text-white'
-                          : 'text-white group-hover:text-blue-600 group-hover:rotate-6'
-                        }
-                      `}
+                          : 'text-white group-hover:rotate-6'
+                      }`}
                     />
-
                     <span className="tracking-wide">
                       {item.title}
                     </span>
@@ -234,4 +254,4 @@ export default function TopNavbar() {
       </div>
     </header>
   );
-   }
+  }
