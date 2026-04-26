@@ -2753,8 +2753,8 @@ export default function ProScannerBot() {
               <Scan className="w-4 h-4 text-white" />
             </div>
             <div>
-              <h1 className="text-base font-bold bg-gradient-to-r from-blue-400 to-indigo-400 bg-clip-text text-transparent">Milliefx Pro Scanner Bot</h1>
-              <p className="text-[10px] text-blue-300/80">Milliefx Advanced Market Scanning & Recovery System</p>
+              <h1 className="text-base font-bold bg-gradient-to-r from-blue-400 to-indigo-400 bg-clip-text text-transparent">Ramzfx Pro Scanner Bot</h1>
+              <p className="text-[10px] text-blue-300/80">Ramzfx Advanced Market Scanning & Recovery System</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -2775,7 +2775,7 @@ export default function ProScannerBot() {
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-1.5">
                 <Eye className="w-3.5 h-3.5 text-blue-400" />
-                <span className="text-xs font-semibold">Scan All Markets </span>
+                <span className="text-xs font-semibold">Scan All Markets (where the pattern is found)</span>
                 <Badge variant={scannerActive ? 'default' : 'secondary'} className="text-[9px] h-4 px-1.5">
                   {scannerActive ? '🟢 ON' : '⚫ OFF'}
                 </Badge>
@@ -2799,7 +2799,7 @@ export default function ProScannerBot() {
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-1.5">
                 <Zap className={`w-3.5 h-3.5 ${turboMode ? 'text-blue-400 animate-pulse' : 'text-muted-foreground'}`} />
-                <span className="text-xs font-semibold">Turbo Mode</span>
+                <span className="text-xs font-semibold">Turbo Mode(speed bot)</span>
               </div>
               <Button
                 size="sm"
@@ -2857,7 +2857,7 @@ export default function ProScannerBot() {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-1 gap-3">
               <div className="bg-card border-2 border-blue-500/30 rounded-xl p-3 space-y-2">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-xs font-bold text-blue-400 flex items-center gap-1"><Home className="w-3.5 h-3.5" /> M1 — Home</h3>
+                  <h3 className="text-xs font-bold text-blue-400 flex items-center gap-1"><Home className="w-3.5 h-3.5" /> Market 1</h3>
                   <div className="flex items-center gap-1.5">
                     {currentMarket === 1 && isRunning && <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />}
                     <Switch checked={m1Enabled} onCheckedChange={setM1Enabled} disabled={isRunning} />
@@ -2917,7 +2917,7 @@ export default function ProScannerBot() {
 
               <div className="bg-card border-2 border-purple-500/30 rounded-xl p-3 space-y-2">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-xs font-bold text-purple-400 flex items-center gap-1"><RefreshCw className="w-3.5 h-3.5" /> M2 — Recovery</h3>
+                  <h3 className="text-xs font-bold text-purple-400 flex items-center gap-1"><RefreshCw className="w-3.5 h-3.5" /> Market 2 — Recovery</h3>
                   <div className="flex items-center gap-1.5">
                     {currentMarket === 2 && isRunning && <span className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-pulse" />}
                     <Switch checked={m2Enabled} onCheckedChange={setM2Enabled} disabled={isRunning} />
