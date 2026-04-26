@@ -704,3 +704,12 @@
     font-size: 16pt !important;
   }
 }
+/* Add to your global CSS file */
+.bg-clip-text {
+  -webkit-background-clip: text;
+  background-clip: text;
+}
+
+.text-transparent {
+  color: transparent;
+}
