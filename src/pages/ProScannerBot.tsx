@@ -173,7 +173,7 @@ const SocialNotificationPopup = ({ onClose }: { onClose: () => void }) => {
     },
     {
       name: 'YouTube',
-      url: 'https://youtube.com/@millicentalice-sc6kz?si=TRpxu_Eji8k2q98K',
+      url: 'http://www.youtube.com/@ceoramz',
       icon: <Youtube className="w-4 h-4" />,
       color: 'hover:text-[#FF0000]',
       bgGradient: 'from-red-500/20 to-red-600/20',
