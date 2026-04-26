@@ -2775,7 +2775,7 @@ export default function ProScannerBot() {
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-1.5">
                 <Eye className="w-3.5 h-3.5 text-blue-400" />
-                <span className="text-xs font-semibold">Scan All Markets (where the pattern is found)</span>
+                <span className="text-xs font-semibold">Scan All Markets (17 markets)</span>
                 <Badge variant={scannerActive ? 'default' : 'secondary'} className="text-[9px] h-4 px-1.5">
                   {scannerActive ? '🟢 ON' : '⚫ OFF'}
                 </Badge>
