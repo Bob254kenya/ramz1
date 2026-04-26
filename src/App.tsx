@@ -85,7 +85,7 @@ function AppRoutes() {
             >
               WELCOME TO {' '}
               <span className="text-primary">RAMZFX.SITE</span>
-              <div className="text-primary">TRADE WITH CONFIDENCE USER BEST AI TOOLS</div>
+              <div className="text-primary">TRADE WITH CONFIDENCE</div>
             </motion.h1>
             <motion.div
               className="flex items-center justify-center gap-2 text-muted-foreground text-sm"
