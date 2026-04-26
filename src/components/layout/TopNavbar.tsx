@@ -171,25 +171,26 @@ export default function TopNavbar() {
         </div>
       </div>
 
-      {/* Row 2: Navigation links with black background, blue links, white text/icons */}
-      <div className="border-t border-gray-800 bg-black">
+      {/* Row 2: Navigation links with updated styling */}
+      <div className="border-t border-gray-800 bg-white">
         {/* Scrollable container */}
         <div className="overflow-x-auto overflow-y-visible scrollbar-thin scrollbar-thumb-gray-700 scrollbar-track-transparent hover:scrollbar-thumb-gray-600">
-          <nav className="flex items-center gap-0 px-4 min-w-max h-10 max-w-[1920px] mx-auto">
-            {navItems.map((item, index) => {
+          <nav className="flex items-center gap-2 px-4 min-w-max h-10 max-w-[1920px] mx-auto">
+            {navItems.map((item) => {
               return (
                 <NavLink
                   key={item.url}
                   to={item.url}
                   end={item.url === '/'}
                   className={({ isActive }) => `
-                    group relative flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[10px] font-medium
-                    transition-all duration-200 whitespace-nowrap shrink-0
-                    border-r border-gray-800 last:border-r-0
-                    mx-0
+                    group relative flex items-center gap-2 px-4 py-2 rounded-md text-[9px] font-medium
+                    transition-all duration-300 ease-in-out transform
+                    whitespace-nowrap shrink-0
+                    border border-gray-300
+                    overflow-hidden
                     ${isActive 
-                      ? 'bg-blue-600 text-white' 
-                      : 'bg-transparent text-gray-400 hover:bg-gray-900 hover:text-white'
+                      ? 'bg-blue-600 text-white border-blue-600 shadow-lg scale-105' 
+                      : 'bg-white text-gray-700 border-gray-300 hover:bg-blue-500 hover:text-white hover:border-blue-500 hover:scale-105 hover:shadow-lg'
                     }
                   `}
                 >
@@ -197,11 +198,11 @@ export default function TopNavbar() {
                     <>
                       <item.icon 
                         className={`
-                          w-3 h-3 transition-all duration-200
-                          ${isActive ? 'text-white' : 'text-gray-400 group-hover:text-white'}
+                          w-3 h-3 transition-all duration-300 ease-in-out
+                          ${isActive ? 'text-white' : 'text-gray-500 group-hover:text-white group-hover:rotate-12'}
                         `}
                       />
-                      <span className="transition-all duration-200">
+                      <span className="transition-all duration-300 ease-in-out group-hover:translate-x-0.5">
                         {item.title}
                       </span>
                     </>
@@ -214,4 +215,4 @@ export default function TopNavbar() {
       </div>
     </header>
   );
-    }
+   }
