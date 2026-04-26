@@ -19,14 +19,14 @@ import { toast } from 'sonner';
 import SocialIcons from './SocialIcons';
 import ThemeToggle from './ThemeToggle';
 
-// Reduced navItems - consolidated and shortened
 const navItems = [
-  { title: 'Dashboard, url: '/', icon: LayoutDashboard },
-  { title: 'Ultimate Bot, url: '/chart', icon: Activity },
-  { title: 'AnalysisTool, url: '/markets', icon: BarChart3 },
-  { title: 'Advanced Speed Bot, url: '/auto-trade', icon: Bot },
-  { title: 'CopyTrading', url: '/copy-trading', icon: Users },
-  { title: 'Multi-Strategy, url: '/settings', icon: Settings },
+  { title: 'Dashboard', url: '/', icon: LayoutDashboard },
+  { title: 'Ultimate 💥 2026-2027 Bot', url: '/chart', icon: Activity },
+  { title: 'Ramzfx Analysistool', url: '/markets', icon: BarChart3 },
+  { title: 'Free Bots', url: '/smart-bot', icon: Zap },
+  { title: 'Advanced Tool $ Speed Bot', url: '/auto-trade', icon: Bot },
+  { title: 'Copy Trading', url: '/copy-trading', icon: Users },
+  { title: 'Multi-Strategy Bot', url: '/settings', icon: Settings },
 ];
 
 // Helper function to get currency flag
@@ -171,11 +171,11 @@ export default function TopNavbar() {
         </div>
       </div>
 
-      {/* Row 2: Navigation links with blue background, white text, borders, and 4px spacing */}
-      <div className="border-t border-gray-800 bg-blue-600">
+      {/* Row 2: Navigation links with blue background, white text, rounded borders, 7px margin, and best hover animations */}
+      <div className="border-t border-gray-800 bg-black">
         {/* Scrollable container */}
         <div className="overflow-x-auto overflow-y-visible scrollbar-thin scrollbar-thumb-gray-700 scrollbar-track-transparent hover:scrollbar-thumb-gray-600">
-          <nav className="flex items-center gap-1 px-4 min-w-max h-10 max-w-[1920px] mx-auto">
+          <nav className="flex items-center gap-[7px] px-4 py-2 min-w-max max-w-[1920px] mx-auto">
             {navItems.map((item) => {
               return (
                 <NavLink
@@ -183,24 +183,29 @@ export default function TopNavbar() {
                   to={item.url}
                   end={item.url === '/'}
                   className={({ isActive }) => `
-                    group relative flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-medium
-                    transition-all duration-300 ease-in-out transform
+                    group relative flex items-center gap-1.5 px-3 py-1.5 text-[8px] font-bold
+                    transition-all duration-300 ease-out transform
                     whitespace-nowrap shrink-0
-                    border border-white/30 rounded-md
+                    border border-transparent rounded-[5%]
                     bg-blue-600 text-white
-                    hover:bg-blue-700 hover:border-white/50 hover:scale-105 hover:shadow-lg
-                    ${isActive ? 'bg-blue-700 border-white shadow-md' : ''}
+                    hover:bg-blue-500 hover:border-blue-300 hover:scale-105 hover:shadow-[0_4px_12px_rgba(59,130,246,0.3)]
+                    active:scale-95
+                    ${isActive 
+                      ? 'bg-blue-700 border-blue-400 shadow-[0_2px_8px_rgba(59,130,246,0.5)] scale-[1.02]' 
+                      : ''
+                    }
                   `}
                 >
                   {({ isActive }) => (
                     <>
                       <item.icon 
                         className={`
-                          w-3 h-3 transition-all duration-300 ease-in-out
-                          text-white group-hover:rotate-12
+                          w-3 h-3 transition-all duration-300 ease-out
+                          text-white group-hover:rotate-12 group-hover:scale-110
+                          ${isActive ? 'rotate-0 scale-100' : ''}
                         `}
                       />
-                      <span className="transition-all duration-300 ease-in-out group-hover:translate-x-0.5">
+                      <span className="transition-all duration-300 ease-out group-hover:translate-x-0.5 group-hover:tracking-wide">
                         {item.title}
                       </span>
                     </>
@@ -213,4 +218,4 @@ export default function TopNavbar() {
       </div>
     </header>
   );
-  }
+    }
