@@ -20,6 +20,88 @@ import {
 } from 'lucide-react';
 
 // ============================================
+// MARKET DIGIT EXTRACTION CONFIGURATION
+// ============================================
+
+type DigitPosition = 1 | 2 | 3 | 4; // Digit position after decimal: 1st, 2nd, 3rd, or 4th digit
+
+interface MarketDigitConfig {
+  position: DigitPosition;
+  description: string;
+}
+
+const MARKET_DIGIT_CONFIG: Record<string, MarketDigitConfig> = {
+  // Extract 3rd digit after decimal
+  '1HZ15V': { position: 3, description: 'Volatility 15 (1s) - 3rd digit' },
+  '1HZ25V': { position: 3, description: 'Volatility 25 (1s) - 3rd digit' },
+  '1HZ30V': { position: 3, description: 'Volatility 30 (1s) - 3rd digit' },
+  '1HZ90V': { position: 3, description: 'Volatility 90 (1s) - 3rd digit' },
+  'R_10': { position: 3, description: 'Volatility 10 Index - 3rd digit' },
+  'R_25': { position: 3, description: 'Volatility 25 Index - 3rd digit' },
+  // Extract 4th digit after decimal (higher precision)
+  '1HZ50V': { position: 4, description: 'Volatility 50 (1s) - 4th digit' },
+  '1HZ75V': { position: 4, description: 'Volatility 75 (1s) - 4th digit' },
+  '1HZ100V': { position: 4, description: 'Volatility 100 (1s) - 4th digit' },
+  'R_50': { position: 4, description: 'Volatility 50 Index - 4th digit' },
+  'R_75': { position: 4, description: 'Volatility 75 Index - 4th digit' },
+  'R_100': { position: 4, description: 'Volatility 100 Index - 4th digit' },
+  'R_150': { position: 4, description: 'Volatility 150 Index - 4th digit' },
+  'RDBEAR': { position: 4, description: 'Bear Market - 4th digit' },
+  'RDBULL': { position: 4, description: 'Bull Market - 4th digit' },
+  'JD10': { position: 4, description: 'Jump 10 - 4th digit' },
+  'JD25': { position: 4, description: 'Jump 25 - 4th digit' },
+  'JD50': { position: 4, description: 'Jump 50 - 4th digit' },
+  'JD75': { position: 4, description: 'Jump 75 - 4th digit' },
+  'JD100': { position: 4, description: 'Jump 100 - 4th digit' },
+  // Default for other markets (first digit after decimal)
+  'stpRNG': { position: 1, description: 'Step Index - 1st digit' },
+  'RBRK100': { position: 2, description: 'Range Break 100 - 2nd digit' },
+  'RBRK200': { position: 2, description: 'Range Break 200 - 2nd digit' },
+};
+
+// Default config for any market not specified
+const DEFAULT_DIGIT_CONFIG: MarketDigitConfig = { position: 1, description: 'Default - 1st digit' };
+
+/**
+ * Extract a specific digit after the decimal point from a price
+ * @param price - The price value (e.g., 1234.56789)
+ * @param position - Which digit after decimal (1 = first, 2 = second, etc.)
+ * @returns The extracted digit (0-9)
+ */
+function extractDigitByPosition(price: number, position: DigitPosition): number {
+  // Convert to string with sufficient precision
+  const priceStr = price.toFixed(10);
+  const decimalIndex = priceStr.indexOf('.');
+  
+  if (decimalIndex === -1) return 0;
+  
+  // Get the digit at the specified position after decimal
+  const digitIndex = decimalIndex + position;
+  if (digitIndex >= priceStr.length) return 0;
+  
+  const digitChar = priceStr[digitIndex];
+  const digit = parseInt(digitChar, 10);
+  
+  return isNaN(digit) ? 0 : digit;
+}
+
+/**
+ * Get the digit extraction configuration for a specific market
+ */
+function getMarketDigitConfig(symbol: string): MarketDigitConfig {
+  return MARKET_DIGIT_CONFIG[symbol] || DEFAULT_DIGIT_CONFIG;
+}
+
+/**
+ * Get the last digit from a price based on market-specific configuration
+ * This replaces the original getLastDigit function with market-aware extraction
+ */
+function getMarketAwareLastDigit(price: number, symbol: string): number {
+  const config = getMarketDigitConfig(symbol);
+  return extractDigitByPosition(price, config.position);
+}
+
+// ============================================
 // TP/SL NOTIFICATION POPUP - COMPONENT
 // ============================================
 
@@ -279,26 +361,34 @@ const TPSLNotificationPopup = () => {
 
 /* ── Markets ── */
 const ALL_MARKETS = [
+  // Volatility 1s series (1-second contracts)
   { symbol: '1HZ10V', name: 'Volatility 10 (1s)', group: 'vol1s' },
   { symbol: '1HZ15V', name: 'Volatility 15 (1s)', group: 'vol1s' },
   { symbol: '1HZ25V', name: 'Volatility 25 (1s)', group: 'vol1s' },
   { symbol: '1HZ30V', name: 'Volatility 30 (1s)', group: 'vol1s' },
   { symbol: '1HZ50V', name: 'Volatility 50 (1s)', group: 'vol1s' },
   { symbol: '1HZ75V', name: 'Volatility 75 (1s)', group: 'vol1s' },
+  { symbol: '1HZ90V', name: 'Volatility 90 (1s)', group: 'vol1s' },
   { symbol: '1HZ100V', name: 'Volatility 100 (1s)', group: 'vol1s' },
-  { symbol: 'R_10', name: 'Volatility 10', group: 'vol' },
-  { symbol: 'R_25', name: 'Volatility 25', group: 'vol' },
-  { symbol: 'R_50', name: 'Volatility 50', group: 'vol' },
-  { symbol: 'R_75', name: 'Volatility 75', group: 'vol' },
-  { symbol: 'R_100', name: 'Volatility 100', group: 'vol' },
+  // Volatility indices
+  { symbol: 'R_10', name: 'Volatility 10 Index', group: 'vol' },
+  { symbol: 'R_25', name: 'Volatility 25 Index', group: 'vol' },
+  { symbol: 'R_50', name: 'Volatility 50 Index', group: 'vol' },
+  { symbol: 'R_75', name: 'Volatility 75 Index', group: 'vol' },
+  { symbol: 'R_100', name: 'Volatility 100 Index', group: 'vol' },
+  { symbol: 'R_150', name: 'Volatility 150 Index', group: 'vol' },
+  // Jump indices
   { symbol: 'JD10', name: 'Jump 10', group: 'jump' },
   { symbol: 'JD25', name: 'Jump 25', group: 'jump' },
   { symbol: 'JD50', name: 'Jump 50', group: 'jump' },
   { symbol: 'JD75', name: 'Jump 75', group: 'jump' },
   { symbol: 'JD100', name: 'Jump 100', group: 'jump' },
+  // Market direction indices
   { symbol: 'RDBEAR', name: 'Bear Market', group: 'bear' },
   { symbol: 'RDBULL', name: 'Bull Market', group: 'bull' },
+  // Step index
   { symbol: 'stpRNG', name: 'Step Index', group: 'step' },
+  // Range break indices
   { symbol: 'RBRK100', name: 'Range Break 100', group: 'range' },
   { symbol: 'RBRK200', name: 'Range Break 200', group: 'range' },
 ];
@@ -317,7 +407,7 @@ const GROUPS = [
 const TIMEFRAMES = ['1m','3m','5m','15m','30m','1h','4h','12h','1d'];
 const CANDLE_CONFIG = {
   minCandles: 1000,
-  maxCandles: 5000,
+  maxCandles: 100000, // Increased to 100,000 candles
   defaultCandles: 1000,
 };
 
@@ -372,6 +462,7 @@ interface DigitStats {
   underPercentage: number;
   last26Digits: number[];
   tickPrices: number[];
+  digitPosition: number; // Track which digit position we're using
 }
 
 // Independent tick storage for digit analysis
@@ -591,6 +682,7 @@ function calculateDigitStats(symbol: string, tickRange: number): DigitStats {
   const ticks = getTickHistory(symbol);
   const tickPricesData = getTickPrices(symbol);
   const recentTicks = ticks.slice(-tickRange);
+  const digitConfig = getMarketDigitConfig(symbol);
   
   const frequency: Record<number, number> = {};
   for (let i = 0; i <= 9; i++) frequency[i] = 0;
@@ -639,6 +731,7 @@ function calculateDigitStats(symbol: string, tickRange: number): DigitStats {
     underPercentage: recentTicks.length > 0 ? (underCount / recentTicks.length * 100) : 50,
     last26Digits,
     tickPrices: last26Prices,
+    digitPosition: digitConfig.position,
   };
 }
 
@@ -659,7 +752,7 @@ function simulateVirtualContract(
       if (data.tick && data.tick.symbol === symbol) {
         clearTimeout(timeout);
         unsub();
-        const digit = getLastDigit(data.tick.quote);
+        const digit = getMarketAwareLastDigit(data.tick.quote, symbol);
         const b = parseInt(barrier) || 0;
         let won = false;
         switch (contractType) {
@@ -779,6 +872,7 @@ export default function TradingChart() {
     underPercentage: 50,
     last26Digits: [],
     tickPrices: [],
+    digitPosition: 1,
   });
 
   const [candleWidth, setCandleWidth] = useState(7);
@@ -842,6 +936,14 @@ export default function TradingChart() {
   const [vhConsecLosses, setVhConsecLosses] = useState(0);
   const [vhStatus, setVhStatus] = useState<'idle' | 'waiting' | 'confirmed' | 'failed'>('idle');
   const patternTradeTakenRef = useRef(false);
+
+  // Helper function to get current market digit configuration info
+  const currentDigitConfig = useMemo(() => getMarketDigitConfig(symbol), [symbol]);
+
+  // Helper function to get digit from price based on current market
+  const getDigitFromPrice = useCallback((price: number): number => {
+    return getMarketAwareLastDigit(price, symbol);
+  }, [symbol]);
 
   // Helper function to get symbol based on contract type, digit, and price movement
   const getDigitSymbol = useCallback((digit: number, price: number, prevPrice: number | null, type: string, barrier: string): string => {
@@ -941,7 +1043,7 @@ export default function TradingChart() {
     ));
   }, []);
 
-  // Load history
+  // Load history with increased candle limit
   useEffect(() => {
     let active = true;
     let timeoutId: NodeJS.Timeout;
@@ -981,7 +1083,7 @@ export default function TradingChart() {
         const hist = await derivApi.getTickHistory(symbol as MarketSymbol, ticksToLoad);
         if (!active) return;
         
-        const historicalDigits = (hist.history.prices || []).map(p => getLastDigit(p));
+        const historicalDigits = (hist.history.prices || []).map(p => getDigitFromPrice(p));
         const historicalPrices = hist.history.prices || [];
         globalTickHistory[symbol] = historicalDigits;
         globalTickPrices[symbol] = historicalPrices;
@@ -998,7 +1100,7 @@ export default function TradingChart() {
             if (!active || !data.tick) return;
             
             const quote = data.tick.quote;
-            const digit = getLastDigit(quote);
+            const digit = getDigitFromPrice(quote);
             const epoch = data.tick.epoch;
             
             addTick(symbol, digit, quote);
@@ -1025,7 +1127,7 @@ export default function TradingChart() {
           });
           subscribedRef.current = true;
           console.log(`Subscribed to ${symbol} for real-time updates`);
-          toast.success(`Connected to ${symbol} market`, { duration: 2000 });
+          toast.success(`Connected to ${symbol} market (Digit: ${currentDigitConfig.position}${currentDigitConfig.position === 1 ? 'st' : currentDigitConfig.position === 2 ? 'nd' : currentDigitConfig.position === 3 ? 'rd' : 'th'} digit)`, { duration: 3000 });
         }
       } catch (err) {
         console.error('Error loading market data:', err);
@@ -1042,7 +1144,7 @@ export default function TradingChart() {
       cleanup();
       subscribedRef.current = false;
     };
-  }, [symbol, candleCount, updateDigitStats, showChart]);
+  }, [symbol, candleCount, updateDigitStats, showChart, getDigitFromPrice, currentDigitConfig.position]);
 
   useEffect(() => {
     const checkConnection = setInterval(() => {
@@ -1084,7 +1186,7 @@ export default function TradingChart() {
 
   const candles = useMemo(() => buildCandles(prices, times, timeframe), [prices, times, timeframe]);
   const currentPrice = prices[prices.length - 1] || 0;
-  const lastDigit = getLastDigit(currentPrice);
+  const lastDigit = getDigitFromPrice(currentPrice);
   
   const bb = useMemo(() => calculateBollingerBands(prices, 20), [prices]);
   const ema50 = useMemo(() => calcEMA(prices, 50), [prices]);
@@ -1100,7 +1202,7 @@ export default function TradingChart() {
   const rsiSeries = useMemo(() => calcRSISeries(prices, 14), [prices]);
   const macdSeries = useMemo(() => calcMACDSeries(prices), [prices]);
 
-  const { frequency, percentages, mostCommon, leastCommon, totalTicks, evenPercentage, oddPercentage, overPercentage, underPercentage } = digitStats;
+  const { frequency, percentages, mostCommon, leastCommon, totalTicks, evenPercentage, oddPercentage, overPercentage, underPercentage, digitPosition } = digitStats;
   
   const bbRange = bb.upper - bb.lower || 1;
   const bbPosition = ((currentPrice - bb.lower) / bbRange * 100);
@@ -1344,7 +1446,7 @@ export default function TradingChart() {
     };
   }, [candles.length, scrollOffset, candleWidth, showChart]);
 
-  // Chart rendering (keep existing rendering logic)
+  // Chart rendering 
   useEffect(() => {
     if (!showChart) return;
     
@@ -1757,7 +1859,7 @@ export default function TradingChart() {
       const won = result.status === 'won';
       const profit = result.profit;
       const newPnl = currentPnl + profit;
-      const resultDigit = getLastDigit(result.price || 0);
+      const resultDigit = getDigitFromPrice(result.price || 0);
       
       setTradeHistory(prev => prev.map(t =>
         t.id === contractId
@@ -1786,7 +1888,7 @@ export default function TradingChart() {
       toast.error(`Trade error: ${err.message}`);
       return { won: false, profit: 0, newPnl: currentPnl, shouldStop: false };
     }
-  }, [botConfig, voiceEnabled, getOutcomeSymbol]);
+  }, [botConfig, voiceEnabled, getOutcomeSymbol, getDigitFromPrice]);
 
   // ============================================
   // VIRTUAL TRADE FUNCTION (for hook phase) - NO NOTIFICATIONS
@@ -2095,6 +2197,13 @@ export default function TradingChart() {
 
   const legend = getLegendText();
 
+  // Get digit position text for display
+  const digitPositionText = useMemo(() => {
+    const pos = currentDigitConfig.position;
+    const suffix = pos === 1 ? 'st' : pos === 2 ? 'nd' : pos === 3 ? 'rd' : 'th';
+    return `${pos}${suffix}`;
+  }, [currentDigitConfig.position]);
+
   return (
     <div className="space-y-4 max-w-[1920px] mx-auto p-4">
       {/* TP/SL Notification Popup */}
@@ -2106,7 +2215,7 @@ export default function TradingChart() {
           <h1 className="text-xl font-bold text-foreground flex items-center gap-2">
             <BarChart3 className="w-5 h-5 text-primary" />Ramzfx Trading Chart
           </h1>
-          <p className="text-xs text-muted-foreground">{marketName} • {timeframe} • {candles.length} candles</p>
+          <p className="text-xs text-muted-foreground">{marketName} • {timeframe} • {candles.length} candles • Digit: {digitPositionText} after decimal</p>
         </div>
         <div className="flex items-center gap-2">
           {/* Connection Status */}
@@ -2184,14 +2293,14 @@ export default function TradingChart() {
           ))}
         </div>
         <div className="flex items-center gap-2">
-          <label className="text-[10px] text-muted-foreground">Candles (1000-5000):</label>
+          <label className="text-[10px] text-muted-foreground">Candles (1000-100000):</label>
           <Select value={String(candleCount)} onValueChange={v => setCandleCount(Math.min(Math.max(parseInt(v), CANDLE_CONFIG.minCandles), CANDLE_CONFIG.maxCandles))}>
-            <SelectTrigger className="h-7 text-xs w-24">
+            <SelectTrigger className="h-7 text-xs w-28">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {[1000, 2000, 3000, 4000, 5000].map(c => (
-                <SelectItem key={c} value={String(c)}>{c}</SelectItem>
+              {[1000, 2000, 3000, 4000, 5000, 10000, 20000, 50000, 100000].map(c => (
+                <SelectItem key={c} value={String(c)}>{c.toLocaleString()}</SelectItem>
               ))}
             </SelectContent>
           </Select>
@@ -2286,7 +2395,7 @@ export default function TradingChart() {
           <div className="grid grid-cols-3 md:grid-cols-7 gap-2">
             {[
               { label: 'Price', value: currentPrice.toFixed(4), color: 'text-foreground' },
-              { label: 'Last Digit', value: String(lastDigit), color: 'text-primary' },
+              { label: `Digit (${digitPositionText})`, value: String(lastDigit), color: 'text-primary' },
               { label: 'Support', value: support.toFixed(2), color: 'text-[#3FB950]' },
               { label: 'Resistance', value: resistance.toFixed(2), color: 'text-[#F85149]' },
               { label: 'BB Upper', value: bb.upper.toFixed(2), color: 'text-[#BC8CFF]' },
@@ -2379,7 +2488,7 @@ export default function TradingChart() {
             </div>
             
             <div className="text-center text-[8px] text-muted-foreground animate-pulse">
-              🔄 Updating in real-time with each new tick
+              🔄 Updating in real-time with each new tick • Using {digitPositionText} digit after decimal
             </div>
           </div>
 
@@ -3076,7 +3185,7 @@ export default function TradingChart() {
               )}
             </div>
             <div className="text-center text-[8px] text-muted-foreground mt-2">
-              🔄 Updates with every tick • Latest digit highlighted
+              🔄 Updates with every tick • Latest digit highlighted • Using {digitPositionText} digit after decimal
               {showNumbersInFiltration && " • Over (5-9) Green | Under (0-4) Red"}
             </div>
           </div>
