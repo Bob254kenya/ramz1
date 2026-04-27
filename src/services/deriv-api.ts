@@ -2,7 +2,7 @@
 // CONFIG
 // =============================
 const DERIV_APP_ID = 131592;
-const DERIV_WS_URL = `wss://ws.derivws.com/websockets/v3?app_id=${DERIV_APP_ID}`;
+const DERIV_OAUTH_URL = `https://oauth.deriv.com/oauth2/authorize?app_id=${DERIV_APP_ID}&redirect_uri=${encodeURIComponent(window.location.origin)}&response_type=token&scope=read,trade&state=${generateState()}`;;
 
 // Generate secure state
 function generateState(): string {
