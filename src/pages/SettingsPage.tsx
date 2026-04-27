@@ -290,49 +290,10 @@ export default function RamzfxSpeedBot() {
   
   // Tick storage
   const tickMapRef = useRef<Map<string, number[]>>(new Map());
-  const patternCheckIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const [tickCounts, setTickCounts] = useState<Record<string, number>>({});
   
   // Connection
   const [isConnected, setIsConnected] = useState(derivApi.isConnected);
-  
-  // ========== TICK COLLECTION EFFECT ==========
-  useEffect(() => {
-    if (!derivApi.isConnected) return;
-    
-    const handleTick = (data: any) => {
-      if (data.tick && data.tick.symbol) {
-        const symbol = data.tick.symbol;
-        const digit = getLastDigit(data.tick.quote);
-        
-        // Update tick map
-        if (!tickMapRef.current.has(symbol)) {
-          tickMapRef.current.set(symbol, []);
-        }
-        const ticks = tickMapRef.current.get(symbol)!;
-        ticks.push(digit);
-        // Keep last 1000 ticks per symbol
-        while (ticks.length > 1000) ticks.shift();
-        
-        // Update tick counts for UI
-        setTickCounts(prev => ({
-          ...prev,
-          [symbol]: (prev[symbol] || 0) + 1
-        }));
-      }
-    };
-    
-    const unsubscribe = derivApi.onMessage(handleTick);
-    return () => unsubscribe();
-  }, [derivApi.isConnected]);
-  
-  // ========== CONNECTION MONITORING ==========
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setIsConnected(derivApi.isConnected);
-    }, 3000);
-    return () => clearInterval(interval);
-  }, []);
   
   // ========== HELPERS ==========
   const addLog = useCallback((entry: Omit<LogEntry, 'id'>) => {
@@ -371,7 +332,24 @@ export default function RamzfxSpeedBot() {
     }
   }, []);
   
-  // ========== STRATEGY CHECKING ==========
+  // ========== TICK SUBSCRIPTION ==========
+  useEffect(() => {
+    const handleTick = (data: any) => {
+      if (data.tick && data.tick.symbol) {
+        const symbol = data.tick.symbol;
+        const digit = getLastDigit(data.tick.quote);
+        const currentDigits = tickMapRef.current.get(symbol) || [];
+        const newDigits = [...currentDigits, digit].slice(-100);
+        tickMapRef.current.set(symbol, newDigits);
+        setTickCounts(prev => ({ ...prev, [symbol]: newDigits.length }));
+      }
+    };
+    
+    const unsubscribe = derivApi.onMessage(handleTick);
+    return () => unsubscribe();
+  }, []);
+  
+  // ========== STRATEGY CHECKING (Non-blocking) ==========
   const cleanM1Pattern = m1Pattern.toUpperCase().replace(/[^EO]/g, '');
   const m1PatternValid = cleanM1Pattern.length >= 2;
   const cleanM2Pattern = m2Pattern.toUpperCase().replace(/[^EO]/g, '');
@@ -413,74 +391,21 @@ export default function RamzfxSpeedBot() {
     return checkCombinedPattern(digits, patterns);
   }, []);
   
-  // IMPROVED: Pattern waiting with tick-based checking
+  // Non-blocking pattern wait with proper cancellation
   const waitForPattern = useCallback(async (
     symbol: string,
     checkFn: () => boolean,
     timeoutMs: number = 30000
   ): Promise<boolean> => {
     const startTime = Date.now();
-    
-    // Check immediately
-    if (checkFn()) return true;
-    
-    // Wait for ticks to come in and check on each tick
-    return new Promise((resolve) => {
-      let timeoutId: NodeJS.Timeout;
-      let unsubscribe: (() => void) | null = null;
-      
-      const cleanup = () => {
-        if (timeoutId) clearTimeout(timeoutId);
-        if (unsubscribe) unsubscribe();
-      };
-      
-      const check = () => {
-        if (!runningRef.current || shouldStopRef.current) {
-          cleanup();
-          resolve(false);
-          return;
-        }
-        
-        if (checkFn()) {
-          cleanup();
-          resolve(true);
-        }
-      };
-      
-      // Check on each tick
-      unsubscribe = derivApi.onMessage((data: any) => {
-        if (data.tick && data.tick.symbol === symbol) {
-          check();
-        }
-      });
-      
-      // Also check on an interval for safety
-      const intervalId = setInterval(check, 100);
-      
-      // Timeout
-      timeoutId = setTimeout(() => {
-        cleanup();
-        clearInterval(intervalId);
-        resolve(false);
-      }, timeoutMs);
-      
-      // Store interval ID for cleanup
-      const originalCleanup = cleanup;
-      const newCleanup = () => {
-        clearInterval(intervalId);
-        originalCleanup();
-      };
-      
-      // Override cleanup
-      const cleanupWithInterval = () => {
-        clearInterval(intervalId);
-        cleanup();
-      };
-      
-      // Use a wrapper to handle the interval
-      (check as any)._intervalId = intervalId;
-    });
-  }, []);
+    while (runningRef.current && !shouldStopRef.current && (Date.now() - startTime) < timeoutMs) {
+      if (checkFn()) {
+        return true;
+      }
+      await delay(turboMode ? 50 : 100);
+    }
+    return false;
+  }, [turboMode]);
   
   // ========== EXECUTE REAL TRADE ==========
   const executeRealTrade = useCallback(async (
@@ -573,7 +498,7 @@ export default function RamzfxSpeedBot() {
       result: 'Pending',
       pnl: 0,
       balance: currentBalance,
-      switchInfo: '',
+      switchInfo: `Placing ${cfg.contract} order...`,
     });
     
     setTotalStaked(prev => prev + cStake);
@@ -588,8 +513,12 @@ export default function RamzfxSpeedBot() {
     let newMStep = mStep;
     
     try {
-      if (!turboMode) await waitForNextTick(tradeSymbol);
+      // Wait for next tick if not in turbo mode
+      if (!turboMode) {
+        await waitForNextTick(tradeSymbol);
+      }
       
+      // Prepare buy parameters
       const buyParams: any = {
         contract_type: cfg.contract,
         symbol: tradeSymbol,
@@ -598,9 +527,14 @@ export default function RamzfxSpeedBot() {
         basis: 'stake',
         amount: cStake,
       };
-      if (needsBarrier(cfg.contract)) buyParams.barrier = cfg.barrier;
       
-      console.log('Executing trade:', buyParams);
+      if (needsBarrier(cfg.contract)) {
+        buyParams.barrier = cfg.barrier;
+      }
+      
+      console.log('Buying contract with params:', buyParams);
+      
+      // Execute the buy
       const buyResponse = await derivApi.buyContract(buyParams);
       
       // Check if purchase was successful
@@ -609,14 +543,19 @@ export default function RamzfxSpeedBot() {
       }
       
       contractExecuted = true;
+      updateLog(logId, { switchInfo: `Contract purchased! ID: ${buyResponse.contractId}` });
       
+      // Copy trading if enabled
       if (copyTradingService.enabled) {
         copyTradingService.copyTrade({ ...buyParams, masterTradeId: buyResponse.contractId }).catch(console.error);
       }
       
+      // Wait for contract result
+      updateLog(logId, { switchInfo: `Waiting for result...` });
       const result = await derivApi.waitForContractResult(buyResponse.contractId);
+      
       won = result.status === 'won';
-      const pnl = result.profit;
+      const pnl = result.profit || 0;
       
       updatedPnl = currentPnl + pnl;
       updatedBalance = currentBalance + pnl;
@@ -626,25 +565,37 @@ export default function RamzfxSpeedBot() {
       // Refresh balance from auth context
       await refreshBalance();
       
-      const exitDigit = String(getLastDigit(result.sellPrice || 0));
+      const exitDigit = String(getLastDigit(result.sellPrice || result.bidPrice || 0));
       let switchInfo = '';
       
       if (won) {
         setWins(prev => prev + 1);
-        if (inRecovery) { switchInfo = '✓ Recovery WIN → Back to M1'; inRecovery = false; }
-        else { switchInfo = '→ Continue M1'; }
+        if (inRecovery) { 
+          switchInfo = '✓ Recovery WIN → Back to M1'; 
+          inRecovery = false; 
+        } else { 
+          switchInfo = '→ Continue M1'; 
+        }
         newMStep = 0;
         newCStake = baseStake;
       } else {
         setLosses(prev => prev + 1);
-        if (activeAccount?.is_virtual) recordLoss(cStake, tradeSymbol, 6000);
-        if (!inRecovery && m2Enabled) { inRecovery = true; switchInfo = '✗ Loss → Switch to M2 (Recovery)'; }
-        else { switchInfo = inRecovery ? '→ Stay M2' : '→ Continue M1'; }
+        if (activeAccount?.is_virtual) {
+          recordLoss(cStake, tradeSymbol, 6000);
+        }
+        if (!inRecovery && m2Enabled) { 
+          inRecovery = true; 
+          switchInfo = '✗ Loss → Switch to M2 (Recovery)'; 
+        } else { 
+          switchInfo = inRecovery ? '→ Stay M2' : '→ Continue M1'; 
+        }
+        
         if (martingaleOn) {
           const maxS = parseInt(martingaleMaxSteps) || 5;
           if (mStep < maxS) {
             newCStake = parseFloat((cStake * (parseFloat(martingaleMultiplier) || 2)).toFixed(2));
             newMStep++;
+            switchInfo += ` | Martingale step ${newMStep}/${maxS}, stake: $${newCStake.toFixed(2)}`;
           } else { 
             newMStep = 0; 
             newCStake = baseStake;
@@ -656,21 +607,54 @@ export default function RamzfxSpeedBot() {
       setMartingaleStepState(newMStep);
       setCurrentStakeState(newCStake);
       
-      updateLog(logId, { exitDigit, result: won ? 'Win' : 'Loss', pnl, balance: updatedBalance, switchInfo });
+      updateLog(logId, { 
+        exitDigit, 
+        result: won ? 'Win' : 'Loss', 
+        pnl, 
+        balance: updatedBalance, 
+        switchInfo 
+      });
       
       let shouldBreak = false;
       const tpValue = parseFloat(takeProfit);
       const slValue = parseFloat(stopLoss);
       
       if (updatedPnl >= tpValue) {
-        showTPNotification('tp', `Take Profit Target Hit!`, updatedPnl);
+        showTPNotification('tp', `🎉 Take Profit Target Hit! $${updatedPnl.toFixed(2)}`, updatedPnl);
         shouldBreak = true;
         shouldStopRef.current = true;
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          market: 'SYSTEM',
+          symbol: 'TP/SL',
+          contract: '-',
+          stake: 0,
+          martingaleStep: 0,
+          exitDigit: '-',
+          result: 'Pending',
+          pnl: updatedPnl,
+          balance: updatedBalance,
+          switchInfo: `✅ Take Profit reached! Stopping bot.`,
+        });
       }
+      
       if (updatedPnl <= -slValue) {
-        showTPNotification('sl', `Stop Loss Target Hit!`, Math.abs(updatedPnl));
+        showTPNotification('sl', `😢 Stop Loss Target Hit! -$${Math.abs(updatedPnl).toFixed(2)}`, Math.abs(updatedPnl));
         shouldBreak = true;
         shouldStopRef.current = true;
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          market: 'SYSTEM',
+          symbol: 'TP/SL',
+          contract: '-',
+          stake: 0,
+          martingaleStep: 0,
+          exitDigit: '-',
+          result: 'Pending',
+          pnl: updatedPnl,
+          balance: updatedBalance,
+          switchInfo: `❌ Stop Loss reached! Stopping bot.`,
+        });
       }
       
       return { 
@@ -693,7 +677,10 @@ export default function RamzfxSpeedBot() {
       });
       
       // Check if it's an insufficient funds error
-      if (err.message && (err.message.includes('balance') || err.message.includes('funds') || err.message.includes('amount'))) {
+      if (err.message && (err.message.toLowerCase().includes('balance') || 
+          err.message.toLowerCase().includes('funds') || 
+          err.message.toLowerCase().includes('amount') ||
+          err.message.toLowerCase().includes('insufficient'))) {
         toast.error(`Insufficient funds! Balance: $${updatedBalance.toFixed(2)}`);
         return { 
           localPnl: updatedPnl, 
@@ -725,42 +712,128 @@ export default function RamzfxSpeedBot() {
   
   // ========== START BOT ==========
   const startBot = useCallback(async () => {
-    if (!isAuthorized || isRunning) return;
+    if (!isAuthorized) {
+      toast.error('Please authorize first');
+      return;
+    }
     
+    if (isRunning) {
+      toast.warning('Bot is already running');
+      return;
+    }
+    
+    // Ensure connection first
     const connected = await ensureConnection();
     if (!connected) {
-      addLog({ time: new Date().toLocaleTimeString(), market: 'SYSTEM', symbol: 'ERROR', contract: 'CONNECTION', stake: 0, martingaleStep: 0, exitDigit: '-', result: 'Failed', pnl: 0, balance: authBalance, switchInfo: '❌ Failed to connect to Deriv' });
+      addLog({ 
+        time: new Date().toLocaleTimeString(), 
+        market: 'SYSTEM', 
+        symbol: 'ERROR', 
+        contract: 'CONNECTION', 
+        stake: 0, 
+        martingaleStep: 0, 
+        exitDigit: '-', 
+        result: 'Failed', 
+        pnl: 0, 
+        balance: authBalance, 
+        switchInfo: '❌ Failed to connect to Deriv. Please check your connection.' 
+      });
+      toast.error('Failed to connect to Deriv');
       return;
     }
     
     const baseStake = parseFloat(stake);
-    if (baseStake < 0.35) {
-      addLog({ time: new Date().toLocaleTimeString(), market: 'SYSTEM', symbol: 'ERROR', contract: 'STAKE', stake: 0, martingaleStep: 0, exitDigit: '-', result: 'Failed', pnl: 0, balance: authBalance, switchInfo: '❌ Minimum stake is $0.35' });
+    if (isNaN(baseStake) || baseStake < 0.35) {
+      addLog({ 
+        time: new Date().toLocaleTimeString(), 
+        market: 'SYSTEM', 
+        symbol: 'ERROR', 
+        contract: 'STAKE', 
+        stake: 0, 
+        martingaleStep: 0, 
+        exitDigit: '-', 
+        result: 'Failed', 
+        pnl: 0, 
+        balance: authBalance, 
+        switchInfo: '❌ Minimum stake is $0.35' 
+      });
       toast.error('Minimum stake is $0.35');
       return;
     }
+    
     if (!m1Enabled && !m2Enabled) {
-      addLog({ time: new Date().toLocaleTimeString(), market: 'SYSTEM', symbol: 'ERROR', contract: 'CONFIG', stake: 0, martingaleStep: 0, exitDigit: '-', result: 'Failed', pnl: 0, balance: authBalance, switchInfo: '❌ Both M1 and M2 are disabled' });
+      addLog({ 
+        time: new Date().toLocaleTimeString(), 
+        market: 'SYSTEM', 
+        symbol: 'ERROR', 
+        contract: 'CONFIG', 
+        stake: 0, 
+        martingaleStep: 0, 
+        exitDigit: '-', 
+        result: 'Failed', 
+        pnl: 0, 
+        balance: authBalance, 
+        switchInfo: '❌ Both M1 and M2 are disabled' 
+      });
       toast.error('Both markets are disabled');
       return;
     }
-    if (m1StrategyEnabled && m1StrategyMode === 'pattern' && !m1PatternValid) {
-      addLog({ time: new Date().toLocaleTimeString(), market: 'SYSTEM', symbol: 'ERROR', contract: 'STRATEGY', stake: 0, martingaleStep: 0, exitDigit: '-', result: 'Failed', pnl: 0, balance: authBalance, switchInfo: '❌ M1 pattern invalid (min 2 chars, E/O only)' });
+    
+    if (m1StrategyEnabled && m1StrategyMode === 'pattern' && m1Pattern.trim().length > 0 && !m1PatternValid) {
+      addLog({ 
+        time: new Date().toLocaleTimeString(), 
+        market: 'SYSTEM', 
+        symbol: 'ERROR', 
+        contract: 'STRATEGY', 
+        stake: 0, 
+        martingaleStep: 0, 
+        exitDigit: '-', 
+        result: 'Failed', 
+        pnl: 0, 
+        balance: authBalance, 
+        switchInfo: '❌ M1 pattern invalid (min 2 chars, E/O only)' 
+      });
       toast.error('Invalid M1 pattern');
       return;
     }
-    if (m2StrategyEnabled && m2StrategyMode === 'pattern' && !m2PatternValid) {
-      addLog({ time: new Date().toLocaleTimeString(), market: 'SYSTEM', symbol: 'ERROR', contract: 'STRATEGY', stake: 0, martingaleStep: 0, exitDigit: '-', result: 'Failed', pnl: 0, balance: authBalance, switchInfo: '❌ M2 pattern invalid' });
+    
+    if (m2StrategyEnabled && m2StrategyMode === 'pattern' && m2Pattern.trim().length > 0 && !m2PatternValid) {
+      addLog({ 
+        time: new Date().toLocaleTimeString(), 
+        market: 'SYSTEM', 
+        symbol: 'ERROR', 
+        contract: 'STRATEGY', 
+        stake: 0, 
+        martingaleStep: 0, 
+        exitDigit: '-', 
+        result: 'Failed', 
+        pnl: 0, 
+        balance: authBalance, 
+        switchInfo: '❌ M2 pattern invalid (min 2 chars, E/O only)' 
+      });
       toast.error('Invalid M2 pattern');
       return;
     }
     
     if (authBalance < baseStake) {
-      addLog({ time: new Date().toLocaleTimeString(), market: 'SYSTEM', symbol: 'ERROR', contract: 'BALANCE', stake: 0, martingaleStep: 0, exitDigit: '-', result: 'Failed', pnl: 0, balance: authBalance, switchInfo: `❌ Insufficient balance! Required: $${baseStake.toFixed(2)}` });
+      addLog({ 
+        time: new Date().toLocaleTimeString(), 
+        market: 'SYSTEM', 
+        symbol: 'ERROR', 
+        contract: 'BALANCE', 
+        stake: 0, 
+        martingaleStep: 0, 
+        exitDigit: '-', 
+        result: 'Failed', 
+        pnl: 0, 
+        balance: authBalance, 
+        switchInfo: `❌ Insufficient balance! Required: $${baseStake.toFixed(2)}, Available: $${authBalance.toFixed(2)}` 
+      });
       toast.error(`Insufficient balance! Need $${baseStake.toFixed(2)}`);
       return;
     }
     
+    // Reset bot state
     shouldStopRef.current = false;
     setIsRunning(true);
     runningRef.current = true;
@@ -770,6 +843,10 @@ export default function RamzfxSpeedBot() {
     setMartingaleStepState(0);
     patternTradeTakenRef.current = false;
     combinedTradeTakenRef.current = false;
+    setNetProfit(0);
+    setWins(0);
+    setLosses(0);
+    setTotalStaked(0);
     
     let cStake = baseStake;
     let mStep = 0;
@@ -791,345 +868,440 @@ export default function RamzfxSpeedBot() {
       switchInfo: `🚀 Bot started with stake $${baseStake.toFixed(2)} | TP: $${takeProfit} | SL: $${stopLoss}`,
     });
     
+    toast.success(`Bot started with stake $${baseStake.toFixed(2)}`);
+    
+    // Main trading loop
     while (runningRef.current && !shouldStopRef.current) {
-      // Refresh balance periodically
-      await refreshBalance();
-      currentBalance = authBalance;
-      setLocalBalance(currentBalance);
-      
-      // Check TP/SL
-      if (currentPnl >= parseFloat(takeProfit) || currentPnl <= -parseFloat(stopLoss)) {
-        shouldStopRef.current = true;
-        break;
-      }
-      
-      // Check for insufficient funds
-      if (currentBalance < cStake) {
-        addLog({
-          time: new Date().toLocaleTimeString(),
-          market: 'SYSTEM',
-          symbol: 'BOT',
-          contract: 'STOP',
-          stake: cStake,
-          martingaleStep: mStep,
-          exitDigit: '-',
-          result: 'Failed',
-          pnl: currentPnl,
-          balance: currentBalance,
-          switchInfo: `❌ BOT STOPPED - Insufficient funds! Need $${cStake.toFixed(2)}, have $${currentBalance.toFixed(2)}`,
-        });
-        toast.error(`Bot stopped - Insufficient funds! Need $${cStake.toFixed(2)}`);
-        setBotStatus('insufficient_funds');
-        break;
-      }
-      
-      // Check connection
-      if (!derivApi.isConnected) {
-        setBotStatus('reconnecting');
-        const reconnected = await ensureConnection();
-        if (!reconnected) {
+      try {
+        // Refresh balance periodically
+        await refreshBalance();
+        currentBalance = authBalance;
+        setLocalBalance(currentBalance);
+        
+        // Check TP/SL
+        if (currentPnl >= parseFloat(takeProfit)) {
           addLog({
             time: new Date().toLocaleTimeString(),
             market: 'SYSTEM',
-            symbol: 'ERROR',
-            contract: 'CONNECTION',
+            symbol: 'TP/SL',
+            contract: '-',
             stake: 0,
             martingaleStep: 0,
+            exitDigit: '-',
+            result: 'Pending',
+            pnl: currentPnl,
+            balance: currentBalance,
+            switchInfo: `✅ Take Profit reached: $${currentPnl.toFixed(2)}. Stopping bot.`,
+          });
+          shouldStopRef.current = true;
+          break;
+        }
+        
+        if (currentPnl <= -parseFloat(stopLoss)) {
+          addLog({
+            time: new Date().toLocaleTimeString(),
+            market: 'SYSTEM',
+            symbol: 'TP/SL',
+            contract: '-',
+            stake: 0,
+            martingaleStep: 0,
+            exitDigit: '-',
+            result: 'Pending',
+            pnl: currentPnl,
+            balance: currentBalance,
+            switchInfo: `❌ Stop Loss reached: $${currentPnl.toFixed(2)}. Stopping bot.`,
+          });
+          shouldStopRef.current = true;
+          break;
+        }
+        
+        // Check for insufficient funds
+        if (currentBalance < cStake) {
+          addLog({
+            time: new Date().toLocaleTimeString(),
+            market: 'SYSTEM',
+            symbol: 'BOT',
+            contract: 'STOP',
+            stake: cStake,
+            martingaleStep: mStep,
             exitDigit: '-',
             result: 'Failed',
             pnl: currentPnl,
             balance: currentBalance,
-            switchInfo: `❌ Connection lost, bot stopped`,
+            switchInfo: `❌ BOT STOPPED - Insufficient funds! Need $${cStake.toFixed(2)}, have $${currentBalance.toFixed(2)}`,
           });
-          toast.error('Connection lost! Bot stopped.');
+          toast.error(`Bot stopped - Insufficient funds! Need $${cStake.toFixed(2)}`);
+          setBotStatus('insufficient_funds');
           break;
         }
-        setBotStatus(inRecovery ? 'recovery' : 'trading_m1');
-      }
-      
-      const mkt: 1 | 2 = inRecovery ? 2 : 1;
-      setCurrentMarket(mkt);
-      
-      if (mkt === 1 && !m1Enabled) { if (m2Enabled) { inRecovery = true; continue; } else break; }
-      if (mkt === 2 && !m2Enabled) { inRecovery = false; continue; }
-      
-      const cfg = mkt === 1 
-        ? { contract: m1Contract, barrier: m1Barrier, symbol: m1Symbol }
-        : { contract: m2Contract, barrier: m2Barrier, symbol: m2Symbol };
-      const hookEnabled = mkt === 1 ? m1HookEnabled : m2HookEnabled;
-      const requiredLosses = parseInt(mkt === 1 ? m1VirtualLossCount : m2VirtualLossCount) || 3;
-      const realCount = parseInt(mkt === 1 ? m1RealCount : m2RealCount) || 2;
-      const strategyActive = mkt === 1 ? m1StrategyEnabled : m2StrategyEnabled;
-      const combinedActive = mkt === 1 ? m1CombinedEnabled : m2CombinedEnabled;
-      const combinedPatterns = mkt === 1 ? m1CombinedPatterns : m2CombinedPatterns;
-      
-      let tradeSymbol = cfg.symbol;
-      let patternMatched = false;
-      
-      // Combined strategy check (highest priority)
-      if (combinedActive && combinedPatterns.trim() !== '') {
-        setBotStatus('waiting_pattern');
-        addLog({
-          time: new Date().toLocaleTimeString(),
-          market: 'COMBINED',
-          symbol: tradeSymbol,
-          contract: cfg.contract,
-          stake: 0,
-          martingaleStep: 0,
-          exitDigit: '-',
-          result: 'Pending',
-          pnl: 0,
-          balance: currentBalance,
-          switchInfo: `🔍 Waiting for combined pattern: ${combinedPatterns}`,
-        });
         
-        const matched = await waitForPattern(tradeSymbol, () => checkCombinedForSymbol(tradeSymbol, combinedPatterns), 30000);
-        
-        if (matched && runningRef.current && !shouldStopRef.current) {
-          setBotStatus('pattern_matched');
-          await delay(turboMode ? 100 : 300);
-          addLog({ 
-            time: new Date().toLocaleTimeString(), 
-            market: 'COMBINED', 
-            symbol: tradeSymbol, 
-            contract: cfg.contract, 
-            stake: 0, 
-            martingaleStep: 0, 
-            exitDigit: '-', 
-            result: 'Pending', 
-            pnl: 0, 
-            balance: currentBalance, 
-            switchInfo: `🎯 COMBINED PATTERN MATCHED! ${combinedPatterns}` 
-          });
-          combinedTradeTakenRef.current = true;
-          patternMatched = true;
-        } else if (!matched) {
+        // Check connection
+        if (!derivApi.isConnected) {
+          setBotStatus('reconnecting');
           addLog({
             time: new Date().toLocaleTimeString(),
-            market: 'COMBINED',
+            market: 'SYSTEM',
+            symbol: 'CONNECTION',
+            contract: '-',
+            stake: 0,
+            martingaleStep: 0,
+            exitDigit: '-',
+            result: 'Pending',
+            pnl: currentPnl,
+            balance: currentBalance,
+            switchInfo: `⚠️ Connection lost. Attempting to reconnect...`,
+          });
+          
+          const reconnected = await ensureConnection();
+          if (!reconnected) {
+            addLog({
+              time: new Date().toLocaleTimeString(),
+              market: 'SYSTEM',
+              symbol: 'ERROR',
+              contract: 'CONNECTION',
+              stake: 0,
+              martingaleStep: 0,
+              exitDigit: '-',
+              result: 'Failed',
+              pnl: currentPnl,
+              balance: currentBalance,
+              switchInfo: `❌ Connection lost, bot stopped`,
+            });
+            toast.error('Connection lost! Bot stopped.');
+            break;
+          }
+          setBotStatus(inRecovery ? 'recovery' : 'trading_m1');
+          addLog({
+            time: new Date().toLocaleTimeString(),
+            market: 'SYSTEM',
+            symbol: 'CONNECTION',
+            contract: '-',
+            stake: 0,
+            martingaleStep: 0,
+            exitDigit: '-',
+            result: 'Pending',
+            pnl: currentPnl,
+            balance: currentBalance,
+            switchInfo: `✅ Reconnected successfully!`,
+          });
+        }
+        
+        const mkt: 1 | 2 = inRecovery ? 2 : 1;
+        setCurrentMarket(mkt);
+        
+        if (mkt === 1 && !m1Enabled) { 
+          if (m2Enabled) { 
+            inRecovery = true; 
+            setBotStatus('recovery');
+            continue; 
+          } else break; 
+        }
+        
+        if (mkt === 2 && !m2Enabled) { 
+          inRecovery = false; 
+          setBotStatus('trading_m1');
+          continue; 
+        }
+        
+        const cfg = mkt === 1 
+          ? { contract: m1Contract, barrier: m1Barrier, symbol: m1Symbol }
+          : { contract: m2Contract, barrier: m2Barrier, symbol: m2Symbol };
+        const hookEnabled = mkt === 1 ? m1HookEnabled : m2HookEnabled;
+        const requiredLosses = parseInt(mkt === 1 ? m1VirtualLossCount : m2VirtualLossCount) || 3;
+        const realCount = parseInt(mkt === 1 ? m1RealCount : m2RealCount) || 2;
+        const strategyActive = mkt === 1 ? m1StrategyEnabled : m2StrategyEnabled;
+        const combinedActive = mkt === 1 ? m1CombinedEnabled : m2CombinedEnabled;
+        const combinedPatterns = mkt === 1 ? m1CombinedPatterns : m2CombinedPatterns;
+        
+        let tradeSymbol = cfg.symbol;
+        let patternMatched = false;
+        
+        // Combined strategy check (highest priority)
+        if (combinedActive && combinedPatterns.trim() !== '') {
+          setBotStatus('waiting_pattern');
+          addLog({
+            time: new Date().toLocaleTimeString(),
+            market: mkt === 1 ? 'M1' : 'M2',
+            symbol: tradeSymbol,
+            contract: combinedPatterns,
+            stake: 0,
+            martingaleStep: 0,
+            exitDigit: '-',
+            result: 'Pending',
+            pnl: currentPnl,
+            balance: currentBalance,
+            switchInfo: `🔍 Waiting for combined pattern: ${combinedPatterns}`,
+          });
+          
+          const matched = await waitForPattern(tradeSymbol, () => checkCombinedForSymbol(tradeSymbol, combinedPatterns), 30000);
+          
+          if (matched && runningRef.current && !shouldStopRef.current) {
+            setBotStatus('pattern_matched');
+            await delay(turboMode ? 100 : 300);
+            addLog({ 
+              time: new Date().toLocaleTimeString(), 
+              market: 'COMBINED', 
+              symbol: tradeSymbol, 
+              contract: cfg.contract, 
+              stake: 0, 
+              martingaleStep: 0, 
+              exitDigit: '-', 
+              result: 'Pending', 
+              pnl: currentPnl, 
+              balance: currentBalance, 
+              switchInfo: `🎯 COMBINED PATTERN MATCHED! ${combinedPatterns}` 
+            });
+            combinedTradeTakenRef.current = true;
+            patternMatched = true;
+          } else if (!matched) {
+            addLog({
+              time: new Date().toLocaleTimeString(),
+              market: mkt === 1 ? 'M1' : 'M2',
+              symbol: tradeSymbol,
+              contract: 'PATTERN',
+              stake: 0,
+              martingaleStep: 0,
+              exitDigit: '-',
+              result: 'Pending',
+              pnl: currentPnl,
+              balance: currentBalance,
+              switchInfo: `⏱️ Pattern timeout, continuing...`,
+            });
+            continue;
+          }
+        }
+        
+        // Regular strategy check (if no combined match)
+        if (!patternMatched && strategyActive) {
+          setBotStatus('waiting_pattern');
+          let checkFn: () => boolean;
+          let strategyDescription = '';
+          
+          if (mkt === 1) {
+            if (m1StrategyMode === 'pattern') {
+              checkFn = () => checkPatternMatch(tradeSymbol, cleanM1Pattern);
+              strategyDescription = `pattern ${cleanM1Pattern}`;
+            } else {
+              checkFn = () => checkDigitCondition(tradeSymbol, m1DigitCondition, m1DigitCompare, m1DigitWindow);
+              strategyDescription = `digit ${m1DigitCondition} ${m1DigitCompare} (window ${m1DigitWindow})`;
+            }
+          } else {
+            if (m2StrategyMode === 'pattern') {
+              checkFn = () => checkPatternMatch(tradeSymbol, cleanM2Pattern);
+              strategyDescription = `pattern ${cleanM2Pattern}`;
+            } else {
+              checkFn = () => checkDigitCondition(tradeSymbol, m2DigitCondition, m2DigitCompare, m2DigitWindow);
+              strategyDescription = `digit ${m2DigitCondition} ${m2DigitCompare} (window ${m2DigitWindow})`;
+            }
+          }
+          
+          addLog({
+            time: new Date().toLocaleTimeString(),
+            market: mkt === 1 ? 'M1' : 'M2',
+            symbol: tradeSymbol,
+            contract: 'STRATEGY',
+            stake: 0,
+            martingaleStep: 0,
+            exitDigit: '-',
+            result: 'Pending',
+            pnl: currentPnl,
+            balance: currentBalance,
+            switchInfo: `🔍 Waiting for ${strategyDescription}`,
+          });
+          
+          const matched = await waitForPattern(tradeSymbol, checkFn, 30000);
+          
+          if (matched && runningRef.current && !shouldStopRef.current) {
+            setBotStatus('pattern_matched');
+            await delay(turboMode ? 100 : 300);
+            addLog({
+              time: new Date().toLocaleTimeString(),
+              market: mkt === 1 ? 'M1' : 'M2',
+              symbol: tradeSymbol,
+              contract: 'STRATEGY',
+              stake: 0,
+              martingaleStep: 0,
+              exitDigit: '-',
+              result: 'Pending',
+              pnl: currentPnl,
+              balance: currentBalance,
+              switchInfo: `✅ Pattern matched! Executing ${cfg.contract} trade...`,
+            });
+            patternTradeTakenRef.current = true;
+            patternMatched = true;
+          } else if (!matched) {
+            addLog({
+              time: new Date().toLocaleTimeString(),
+              market: mkt === 1 ? 'M1' : 'M2',
+              symbol: tradeSymbol,
+              contract: 'STRATEGY',
+              stake: 0,
+              martingaleStep: 0,
+              exitDigit: '-',
+              result: 'Pending',
+              pnl: currentPnl,
+              balance: currentBalance,
+              switchInfo: `⏱️ Pattern timeout, continuing...`,
+            });
+            continue;
+          }
+        }
+        
+        // Execute trade or virtual hook
+        if (hookEnabled && !patternMatched) {
+          setBotStatus('virtual_hook');
+          setVhStatus('waiting');
+          setVhFakeWins(0);
+          setVhFakeLosses(0);
+          setVhConsecLosses(0);
+          let consecLosses = 0;
+          let virtualNum = 0;
+          
+          addLog({
+            time: new Date().toLocaleTimeString(),
+            market: 'VH',
             symbol: tradeSymbol,
             contract: cfg.contract,
             stake: 0,
             martingaleStep: 0,
             exitDigit: '-',
             result: 'Pending',
-            pnl: 0,
+            pnl: currentPnl,
             balance: currentBalance,
-            switchInfo: `⏰ Combined pattern timeout, continuing...`,
+            switchInfo: `🎣 Virtual Hook started. Need ${requiredLosses} consecutive losses before ${realCount} real trades.`,
           });
+          
+          while (consecLosses < requiredLosses && runningRef.current && !shouldStopRef.current) {
+            virtualNum++;
+            const vLogId = addLog({ 
+              time: new Date().toLocaleTimeString(), 
+              market: 'VH', 
+              symbol: tradeSymbol, 
+              contract: cfg.contract, 
+              stake: 0, 
+              martingaleStep: 0, 
+              exitDigit: '...', 
+              result: 'Pending', 
+              pnl: currentPnl, 
+              balance: currentBalance, 
+              switchInfo: `Virtual #${virtualNum} (losses: ${consecLosses}/${requiredLosses})` 
+            });
+            
+            try {
+              const vResult = await simulateVirtualContract(cfg.contract, cfg.barrier, tradeSymbol);
+              if (!runningRef.current || shouldStopRef.current) break;
+              if (vResult.won) {
+                consecLosses = 0;
+                setVhConsecLosses(0);
+                setVhFakeWins(prev => prev + 1);
+                updateLog(vLogId, { exitDigit: String(vResult.digit), result: 'V-Win', switchInfo: `Virtual WIN → Losses reset` });
+              } else {
+                consecLosses++;
+                setVhConsecLosses(consecLosses);
+                setVhFakeLosses(prev => prev + 1);
+                updateLog(vLogId, { exitDigit: String(vResult.digit), result: 'V-Loss', switchInfo: `Virtual LOSS (${consecLosses}/${requiredLosses})` });
+              }
+              await delay(100);
+            } catch (err) {
+              updateLog(vLogId, { result: 'V-Loss', exitDigit: '-', switchInfo: `Error: ${err}` });
+              break;
+            }
+          }
+          
+          if (!runningRef.current || shouldStopRef.current) break;
+          setVhStatus('confirmed');
+          
+          addLog({
+            time: new Date().toLocaleTimeString(),
+            market: 'VH',
+            symbol: tradeSymbol,
+            contract: cfg.contract,
+            stake: 0,
+            martingaleStep: 0,
+            exitDigit: '-',
+            result: 'Pending',
+            pnl: currentPnl,
+            balance: currentBalance,
+            switchInfo: `✅ Virtual Hook completed! Executing ${realCount} real ${cfg.contract} trades...`,
+          });
+          
+          for (let ri = 0; ri < realCount && runningRef.current && !shouldStopRef.current; ri++) {
+            const result = await executeRealTrade(cfg, tradeSymbol, cStake, mStep, mkt, currentBalance, currentPnl, baseStake);
+            if (!result.contractExecuted) continue;
+            currentPnl = result.localPnl;
+            currentBalance = result.localBalance;
+            cStake = result.cStake;
+            mStep = result.mStep;
+            inRecovery = result.inRecovery;
+            
+            if (result.insufficientFunds) {
+              shouldStopRef.current = true;
+              setBotStatus('insufficient_funds');
+              break;
+            }
+            if (result.shouldBreak) { shouldStopRef.current = true; break; }
+            if (result.won) break;
+          }
+          setVhStatus('idle');
+          setVhConsecLosses(0);
+          if (strategyActive) patternTradeTakenRef.current = true;
+          await delay(turboMode ? 100 : 400);
           continue;
         }
-      }
-      
-      // Regular strategy check (if no combined match)
-      if (!patternMatched && strategyActive) {
-        setBotStatus('waiting_pattern');
-        let checkFn: () => boolean;
-        let strategyDesc = '';
         
-        if (mkt === 1) {
-          if (m1StrategyMode === 'pattern') {
-            checkFn = () => checkPatternMatch(tradeSymbol, cleanM1Pattern);
-            strategyDesc = `Pattern: ${cleanM1Pattern}`;
-          } else {
-            checkFn = () => checkDigitCondition(tradeSymbol, m1DigitCondition, m1DigitCompare, m1DigitWindow);
-            strategyDesc = `Digit condition: ${m1DigitCondition} ${m1DigitCompare} over ${m1DigitWindow} ticks`;
-          }
-        } else {
-          if (m2StrategyMode === 'pattern') {
-            checkFn = () => checkPatternMatch(tradeSymbol, cleanM2Pattern);
-            strategyDesc = `Pattern: ${cleanM2Pattern}`;
-          } else {
-            checkFn = () => checkDigitCondition(tradeSymbol, m2DigitCondition, m2DigitCompare, m2DigitWindow);
-            strategyDesc = `Digit condition: ${m2DigitCondition} ${m2DigitCompare} over ${m2DigitWindow} ticks`;
-          }
-        }
-        
+        // Normal trade execution
         addLog({
           time: new Date().toLocaleTimeString(),
           market: mkt === 1 ? 'M1' : 'M2',
           symbol: tradeSymbol,
           contract: cfg.contract,
-          stake: 0,
+          stake: cStake,
           martingaleStep: mStep,
           exitDigit: '-',
           result: 'Pending',
-          pnl: 0,
+          pnl: currentPnl,
           balance: currentBalance,
-          switchInfo: `🔍 Waiting for strategy: ${strategyDesc}`,
+          switchInfo: `Executing ${cfg.contract} trade on ${tradeSymbol}...`,
         });
         
-        const matched = await waitForPattern(tradeSymbol, checkFn, 30000);
-        
-        if (matched && runningRef.current && !shouldStopRef.current) {
-          setBotStatus('pattern_matched');
-          addLog({
-            time: new Date().toLocaleTimeString(),
-            market: mkt === 1 ? 'M1' : 'M2',
-            symbol: tradeSymbol,
-            contract: cfg.contract,
-            stake: 0,
-            martingaleStep: mStep,
-            exitDigit: '-',
-            result: 'Pending',
-            pnl: 0,
-            balance: currentBalance,
-            switchInfo: `✅ Strategy matched! Executing trade...`,
-          });
-          await delay(turboMode ? 100 : 300);
-          patternTradeTakenRef.current = true;
-        } else if (!matched) {
-          addLog({
-            time: new Date().toLocaleTimeString(),
-            market: mkt === 1 ? 'M1' : 'M2',
-            symbol: tradeSymbol,
-            contract: cfg.contract,
-            stake: 0,
-            martingaleStep: mStep,
-            exitDigit: '-',
-            result: 'Pending',
-            pnl: 0,
-            balance: currentBalance,
-            switchInfo: `⏰ Strategy timeout, continuing...`,
-          });
+        const result = await executeRealTrade(cfg, tradeSymbol, cStake, mStep, mkt, currentBalance, currentPnl, baseStake);
+        if (!result.contractExecuted) {
+          await delay(1000);
           continue;
         }
-      }
-      
-      // Execute trade or virtual hook
-      if (hookEnabled && !patternMatched) {
-        setBotStatus('virtual_hook');
-        setVhStatus('waiting');
-        setVhFakeWins(0);
-        setVhFakeLosses(0);
-        setVhConsecLosses(0);
-        let consecLosses = 0;
-        let virtualNum = 0;
         
-        addLog({
-          time: new Date().toLocaleTimeString(),
-          market: 'VH',
-          symbol: tradeSymbol,
-          contract: cfg.contract,
-          stake: 0,
-          martingaleStep: mStep,
-          exitDigit: '-',
-          result: 'Pending',
-          pnl: 0,
-          balance: currentBalance,
-          switchInfo: `🎣 Starting Virtual Hook: Need ${requiredLosses} consecutive losses before ${realCount} real trades`,
-        });
+        currentPnl = result.localPnl;
+        currentBalance = result.localBalance;
+        cStake = result.cStake;
+        mStep = result.mStep;
+        inRecovery = result.inRecovery;
         
-        while (consecLosses < requiredLosses && runningRef.current && !shouldStopRef.current) {
-          virtualNum++;
-          const vLogId = addLog({ 
-            time: new Date().toLocaleTimeString(), 
-            market: 'VH', 
-            symbol: tradeSymbol, 
-            contract: cfg.contract, 
-            stake: 0, 
-            martingaleStep: 0, 
-            exitDigit: '...', 
-            result: 'Pending', 
-            pnl: 0, 
-            balance: currentBalance, 
-            switchInfo: `Virtual #${virtualNum} (losses: ${consecLosses}/${requiredLosses})` 
-          });
-          
-          try {
-            const vResult = await simulateVirtualContract(cfg.contract, cfg.barrier, tradeSymbol);
-            if (!runningRef.current || shouldStopRef.current) break;
-            if (vResult.won) {
-              consecLosses = 0;
-              setVhConsecLosses(0);
-              setVhFakeWins(prev => prev + 1);
-              updateLog(vLogId, { exitDigit: String(vResult.digit), result: 'V-Win', switchInfo: `Virtual WIN → Losses reset` });
-            } else {
-              consecLosses++;
-              setVhConsecLosses(consecLosses);
-              setVhFakeLosses(prev => prev + 1);
-              updateLog(vLogId, { exitDigit: String(vResult.digit), result: 'V-Loss', switchInfo: `Virtual LOSS (${consecLosses}/${requiredLosses})` });
-            }
-            await delay(100);
-          } catch (err) {
-            updateLog(vLogId, { result: 'V-Loss', exitDigit: '-', switchInfo: `Error: ${err}` });
-            break;
-          }
+        if (result.insufficientFunds) {
+          shouldStopRef.current = true;
+          setBotStatus('insufficient_funds');
+          break;
         }
-        
-        if (!runningRef.current || shouldStopRef.current) break;
-        setVhStatus('confirmed');
-        
-        addLog({
-          time: new Date().toLocaleTimeString(),
-          market: 'VH',
-          symbol: tradeSymbol,
-          contract: cfg.contract,
-          stake: 0,
-          martingaleStep: mStep,
-          exitDigit: '-',
-          result: 'Pending',
-          pnl: 0,
-          balance: currentBalance,
-          switchInfo: `✅ Virtual Hook complete! Executing ${realCount} real trade(s)...`,
-        });
-        
-        for (let ri = 0; ri < realCount && runningRef.current && !shouldStopRef.current; ri++) {
-          const result = await executeRealTrade(cfg, tradeSymbol, cStake, mStep, mkt, currentBalance, currentPnl, baseStake);
-          if (!result.contractExecuted) continue;
-          currentPnl = result.localPnl;
-          currentBalance = result.localBalance;
-          cStake = result.cStake;
-          mStep = result.mStep;
-          inRecovery = result.inRecovery;
-          
-          if (result.insufficientFunds) {
-            shouldStopRef.current = true;
-            setBotStatus('insufficient_funds');
-            break;
-          }
-          if (result.shouldBreak) { shouldStopRef.current = true; break; }
-          if (result.won) break;
-        }
-        setVhStatus('idle');
-        setVhConsecLosses(0);
+        if (result.shouldBreak) { shouldStopRef.current = true; break; }
         if (strategyActive) patternTradeTakenRef.current = true;
         await delay(turboMode ? 100 : 400);
-        continue;
+        
+      } catch (err: any) {
+        console.error('Bot loop error:', err);
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          market: 'SYSTEM',
+          symbol: 'ERROR',
+          contract: 'BOT_LOOP',
+          stake: 0,
+          martingaleStep: 0,
+          exitDigit: '-',
+          result: 'Failed',
+          pnl: currentPnl,
+          balance: currentBalance,
+          switchInfo: `❌ Bot loop error: ${err.message}`,
+        });
+        await delay(2000);
       }
-      
-      // Normal trade execution
-      addLog({
-        time: new Date().toLocaleTimeString(),
-        market: mkt === 1 ? 'M1' : 'M2',
-        symbol: tradeSymbol,
-        contract: cfg.contract,
-        stake: cStake,
-        martingaleStep: mStep,
-        exitDigit: '...',
-        result: 'Pending',
-        pnl: 0,
-        balance: currentBalance,
-        switchInfo: `💰 Executing trade on ${mkt === 1 ? 'M1' : 'M2'} with stake $${cStake.toFixed(2)}`,
-      });
-      
-      const result = await executeRealTrade(cfg, tradeSymbol, cStake, mStep, mkt, currentBalance, currentPnl, baseStake);
-      if (!result.contractExecuted) continue;
-      
-      currentPnl = result.localPnl;
-      currentBalance = result.localBalance;
-      cStake = result.cStake;
-      mStep = result.mStep;
-      inRecovery = result.inRecovery;
-      
-      if (result.insufficientFunds) {
-        shouldStopRef.current = true;
-        setBotStatus('insufficient_funds');
-        break;
-      }
-      if (result.shouldBreak) { shouldStopRef.current = true; break; }
-      if (strategyActive) patternTradeTakenRef.current = true;
-      await delay(turboMode ? 100 : 400);
     }
     
     setIsRunning(false);
@@ -1147,12 +1319,12 @@ export default function RamzfxSpeedBot() {
         result: 'Pending',
         pnl: netProfit,
         balance: currentBalance,
-        switchInfo: `🛑 Bot stopped. Final P/L: $${netProfit.toFixed(2)}`,
+        switchInfo: `🛑 Bot stopped. Final P/L: $${netProfit.toFixed(2)} | Wins: ${wins} | Losses: ${losses}`,
       });
       toast.info(`Bot stopped. Final P/L: $${netProfit.toFixed(2)}`);
     }
     shouldStopRef.current = false;
-  }, [isAuthorized, isRunning, stake, m1Enabled, m2Enabled, m1Contract, m2Contract, m1Barrier, m2Barrier, m1Symbol, m2Symbol, m1HookEnabled, m2HookEnabled, m1VirtualLossCount, m2VirtualLossCount, m1RealCount, m2RealCount, m1StrategyEnabled, m2StrategyEnabled, m1StrategyMode, m2StrategyMode, m1PatternValid, m2PatternValid, m1CombinedEnabled, m2CombinedEnabled, m1CombinedPatterns, m2CombinedPatterns, martingaleOn, martingaleMultiplier, martingaleMaxSteps, takeProfit, stopLoss, turboMode, authBalance, addLog, ensureConnection, checkPatternMatch, checkDigitCondition, checkCombinedForSymbol, executeRealTrade, waitForPattern, cleanM1Pattern, cleanM2Pattern, refreshBalance, netProfit]);
+  }, [isAuthorized, isRunning, stake, m1Enabled, m2Enabled, m1Contract, m2Contract, m1Barrier, m2Barrier, m1Symbol, m2Symbol, m1HookEnabled, m2HookEnabled, m1VirtualLossCount, m2VirtualLossCount, m1RealCount, m2RealCount, m1StrategyEnabled, m2StrategyEnabled, m1StrategyMode, m2StrategyMode, m1PatternValid, m2PatternValid, m1CombinedEnabled, m2CombinedEnabled, m1CombinedPatterns, m2CombinedPatterns, martingaleOn, martingaleMultiplier, martingaleMaxSteps, takeProfit, stopLoss, turboMode, authBalance, addLog, ensureConnection, checkPatternMatch, checkDigitCondition, checkCombinedForSymbol, executeRealTrade, waitForPattern, cleanM1Pattern, cleanM2Pattern, refreshBalance, netProfit, wins, losses, botStatus]);
   
   const stopBot = useCallback(() => {
     shouldStopRef.current = true;
@@ -1175,9 +1347,9 @@ export default function RamzfxSpeedBot() {
       result: 'Pending',
       pnl: netProfit,
       balance: localBalance,
-      switchInfo: `🛑 Bot manually stopped. P/L: $${netProfit.toFixed(2)}`,
+      switchInfo: `🛑 Bot manually stopped. Final P/L: $${netProfit.toFixed(2)} | Wins: ${wins} | Losses: ${losses}`,
     });
-  }, [addLog, netProfit, localBalance, botStatus]);
+  }, [addLog, netProfit, localBalance, botStatus, wins, losses]);
   
   const winRate = wins + losses > 0 ? ((wins / (wins + losses)) * 100).toFixed(1) : '0.0';
   const statusConfig: Record<BotStatus, { icon: string; label: string; color: string }> = {
@@ -1912,4 +2084,4 @@ export default function RamzfxSpeedBot() {
       </div>
     </>
   );
-      }
+   }
