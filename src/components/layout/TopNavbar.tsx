@@ -1,3 +1,4 @@
+import { Button } from '@/components/ui/button';
 import { NavLink } from '@/components/NavLink';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLossRequirement } from '@/hooks/useLossRequirement';
@@ -5,7 +6,6 @@ import {
   LayoutDashboard, BarChart3, Activity, Bot, Cpu, Zap, Users,
   History, Settings, LogOut, ChevronDown, RefreshCw,
 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
@@ -171,7 +171,7 @@ export default function TopNavbar() {
         </div>
       </div>
 
-      {/* Row 2: Navigation links with blue background, white text, rounded borders, 7px margin, and best hover animations */}
+      {/* Row 2: Navigation links with Button components for easier styling */}
       <div className="border-t border-gray-800 bg-black">
         {/* Scrollable container */}
         <div className="overflow-x-auto overflow-y-visible scrollbar-thin scrollbar-thumb-gray-700 scrollbar-track-transparent hover:scrollbar-thumb-gray-600">
@@ -182,25 +182,28 @@ export default function TopNavbar() {
                   key={item.url}
                   to={item.url}
                   end={item.url === '/'}
-                  className={({ isActive }) => `
-                    group relative flex items-center gap-3.9 px-3 py-1.5 text-[4px] font-bold
-                    transition-all duration-300 ease-out transform
-                    whitespace-nowrap shrink-0
-                    border border-transparent rounded-[5%]
-                    bg-blue-600 text-white
-                    hover:bg-blue-500 hover:border-blue-300 hover:scale-105 hover:shadow-[0_4px_12px_rgba(59,130,246,0.3)]
-                    active:scale-95
-                    ${isActive 
-                      ? 'bg-blue-700 border-blue-400 shadow-[0_2px_8px_rgba(59,130,246,0.5)] scale-[1.02]' 
-                      : ''
-                    }
-                  `}
+                  className={({ isActive }) => ""}
                 >
                   {({ isActive }) => (
-                    <>
+                    <Button
+                      variant="default"
+                      size="sm"
+                      className={`
+                        group relative flex items-center gap-2 px-3 py-1.5 text-sm font-bold
+                        transition-all duration-300 ease-out transform
+                        whitespace-nowrap shrink-0
+                        bg-blue-600 text-white
+                        hover:bg-blue-500 hover:scale-105 hover:shadow-[0_4px_12px_rgba(59,130,246,0.3)]
+                        active:scale-95
+                        ${isActive 
+                          ? 'bg-blue-700 shadow-[0_2px_8px_rgba(59,130,246,0.5)] scale-[1.02]' 
+                          : ''
+                        }
+                      `}
+                    >
                       <item.icon 
                         className={`
-                          w-3 h-3 transition-all duration-300 ease-out
+                          w-3.5 h-3.5 transition-all duration-300 ease-out
                           text-white group-hover:rotate-12 group-hover:scale-110
                           ${isActive ? 'rotate-0 scale-100' : ''}
                         `}
@@ -208,7 +211,7 @@ export default function TopNavbar() {
                       <span className="transition-all duration-300 ease-out group-hover:translate-x-0.5 group-hover:tracking-wide">
                         {item.title}
                       </span>
-                    </>
+                    </Button>
                   )}
                 </NavLink>
               );
@@ -218,4 +221,4 @@ export default function TopNavbar() {
       </div>
     </header>
   );
-    }
+                }
