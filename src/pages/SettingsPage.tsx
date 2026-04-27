@@ -15,6 +15,7 @@ import {
   TrendingUp, TrendingDown, BarChart3, Volume2, VolumeX, Wifi, WifiOff, GripVertical, Combine, Sparkles, ChevronDown, ChevronUp
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { motion } from 'framer-motion';
 
 // ============================================
 // MARKET CONFIGURATION
@@ -53,7 +54,7 @@ const CONTRACT_TYPES = [
 
 const needsBarrier = (ct: string) => ['DIGITMATCH', 'DIGITDIFF', 'DIGITOVER', 'DIGITUNDER'].includes(ct);
 
-type BotStatus = 'idle' | 'trading_m1' | 'recovery' | 'waiting_pattern' | 'pattern_matched' | 'virtual_hook' | 'reconnecting';
+type BotStatus = 'idle' | 'trading_m1' | 'recovery' | 'waiting_pattern' | 'pattern_matched' | 'virtual_hook' | 'reconnecting' | 'insufficient_funds';
 
 interface LogEntry {
   id: number;
@@ -157,7 +158,7 @@ function waitForNextTick(symbol: string): Promise<{ quote: number }> {
   });
 }
 
-async function simulateVirtualContract(contractType: string, barrier: string, symbol: string): Promise<{ won: boolean; digit: number }> {
+function simulateVirtualContract(contractType: string, barrier: string, symbol: string): Promise<{ won: boolean; digit: number }> {
   return new Promise((resolve, reject) => {
     const timeout = setTimeout(() => { unsub(); reject(new Error('Virtual contract timeout')); }, 5000);
     const unsub = derivApi.onMessage((data: any) => {
@@ -208,6 +209,9 @@ function checkCombinedPattern(digits: number[], patternStr: string): boolean {
   }
   return false;
 }
+
+// Helper for non-blocking delays
+const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 export default function RamzfxSpeedBot() {
   const { isAuthorized, balance: authBalance, activeAccount, refreshBalance } = useAuth();
@@ -291,9 +295,6 @@ export default function RamzfxSpeedBot() {
   // Connection
   const [isConnected, setIsConnected] = useState(derivApi.isConnected);
   
-  // Add a ref for timeout cleanup
-  const timeoutsRef = useRef<NodeJS.Timeout[]>([]);
-  
   // ========== HELPERS ==========
   const addLog = useCallback((entry: Omit<LogEntry, 'id'>) => {
     const id = ++logIdRef.current;
@@ -322,7 +323,7 @@ export default function RamzfxSpeedBot() {
     }
     try {
       await derivApi.connect();
-      await new Promise(r => setTimeout(r, 2000));
+      await delay(2000);
       setIsConnected(derivApi.isConnected);
       return derivApi.isConnected;
     } catch (error) {
@@ -331,7 +332,7 @@ export default function RamzfxSpeedBot() {
     }
   }, []);
   
-  // ========== STRATEGY CHECKING ==========
+  // ========== STRATEGY CHECKING (Non-blocking) ==========
   const cleanM1Pattern = m1Pattern.toUpperCase().replace(/[^EO]/g, '');
   const m1PatternValid = cleanM1Pattern.length >= 2;
   const cleanM2Pattern = m2Pattern.toUpperCase().replace(/[^EO]/g, '');
@@ -373,49 +374,23 @@ export default function RamzfxSpeedBot() {
     return checkCombinedPattern(digits, patterns);
   }, []);
   
-  const checkStrategyForMarket = useCallback((market: 1 | 2, symbol: string): boolean => {
-    if (market === 1 && m1StrategyEnabled) {
-      if (m1StrategyMode === 'pattern') return checkPatternMatch(symbol, cleanM1Pattern);
-      else return checkDigitCondition(symbol, m1DigitCondition, m1DigitCompare, m1DigitWindow);
+  // Non-blocking pattern wait with proper cancellation
+  const waitForPattern = useCallback(async (
+    symbol: string,
+    checkFn: () => boolean,
+    timeoutMs: number = 30000
+  ): Promise<boolean> => {
+    const startTime = Date.now();
+    while (runningRef.current && !shouldStopRef.current && (Date.now() - startTime) < timeoutMs) {
+      if (checkFn()) {
+        return true;
+      }
+      await delay(turboMode ? 50 : 100);
     }
-    if (market === 2 && m2StrategyEnabled) {
-      if (m2StrategyMode === 'pattern') return checkPatternMatch(symbol, cleanM2Pattern);
-      else return checkDigitCondition(symbol, m2DigitCondition, m2DigitCompare, m2DigitWindow);
-    }
-    return true;
-  }, [m1StrategyEnabled, m2StrategyEnabled, m1StrategyMode, m2StrategyMode, cleanM1Pattern, cleanM2Pattern, checkPatternMatch, checkDigitCondition, m1DigitCondition, m1DigitCompare, m1DigitWindow, m2DigitCondition, m2DigitCompare, m2DigitWindow]);
-  
-  const checkCombinedForMarket = useCallback((market: 1 | 2, symbol: string): boolean => {
-    if (market === 1 && m1CombinedEnabled) return checkCombinedForSymbol(symbol, m1CombinedPatterns);
-    if (market === 2 && m2CombinedEnabled) return checkCombinedForSymbol(symbol, m2CombinedPatterns);
     return false;
-  }, [m1CombinedEnabled, m2CombinedEnabled, m1CombinedPatterns, m2CombinedPatterns, checkCombinedForSymbol]);
+  }, [turboMode]);
   
-  // ========== TICK SUBSCRIPTION ==========
-  useEffect(() => {
-    if (!derivApi.isConnected) return;
-    let active = true;
-    const handler = (data: any) => {
-      if (!data.tick || !active) return;
-      const sym = data.tick.symbol as string;
-      const digit = getLastDigit(data.tick.quote);
-      const arr = tickMapRef.current.get(sym) || [];
-      arr.push(digit);
-      if (arr.length > 200) arr.shift();
-      tickMapRef.current.set(sym, arr);
-      setTickCounts(prev => ({ ...prev, [sym]: arr.length }));
-    };
-    const unsub = derivApi.onMessage(handler);
-    ALL_MARKETS.forEach(m => { derivApi.subscribeTicks(m.symbol as MarketSymbol, () => {}).catch(() => {}); });
-    return () => { active = false; unsub(); };
-  }, []);
-  
-  // ========== BALANCE SYNC ==========
-  useEffect(() => {
-    setLocalBalance(authBalance);
-  }, [authBalance]);
-  
-  // ========== EXECUTE REAL TRADE - FIXED ==========
+  // ========== EXECUTE REAL TRADE ==========
   const executeRealTrade = useCallback(async (
     cfg: { contract: string; barrier: string; symbol: string },
     tradeSymbol: string,
@@ -434,8 +409,37 @@ export default function RamzfxSpeedBot() {
     shouldBreak: boolean;
     won: boolean;
     contractExecuted: boolean;
+    insufficientFunds: boolean;
   }> => {
-    // Check connection
+    // Check balance FIRST before anything else
+    if (currentBalance < cStake) {
+      addLog({
+        time: new Date().toLocaleTimeString(),
+        market: 'SYSTEM',
+        symbol: tradeSymbol,
+        contract: cfg.contract,
+        stake: cStake,
+        martingaleStep: mStep,
+        exitDigit: '-',
+        result: 'Failed',
+        pnl: 0,
+        balance: currentBalance,
+        switchInfo: `❌ INSUFFICIENT FUNDS! Required: $${cStake.toFixed(2)}, Available: $${currentBalance.toFixed(2)}. Bot stopping.`,
+      });
+      toast.error(`Insufficient funds! Need $${cStake.toFixed(2)} but have $${currentBalance.toFixed(2)}`);
+      return { 
+        localPnl: currentPnl, 
+        localBalance: currentBalance, 
+        cStake, 
+        mStep, 
+        inRecovery: mkt === 2, 
+        shouldBreak: true, 
+        won: false, 
+        contractExecuted: false,
+        insufficientFunds: true
+      };
+    }
+    
     if (!derivApi.isConnected) {
       const connected = await ensureConnection();
       if (!connected) {
@@ -450,7 +454,7 @@ export default function RamzfxSpeedBot() {
           result: 'Failed',
           pnl: 0,
           balance: currentBalance,
-          switchInfo: '❌ No connection available',
+          switchInfo: `❌ No connection available`,
         });
         return { 
           localPnl: currentPnl, 
@@ -460,36 +464,10 @@ export default function RamzfxSpeedBot() {
           inRecovery: mkt === 2, 
           shouldBreak: false, 
           won: false, 
-          contractExecuted: false 
+          contractExecuted: false,
+          insufficientFunds: false
         };
       }
-    }
-    
-    // Check balance
-    if (currentBalance < cStake) {
-      addLog({
-        time: new Date().toLocaleTimeString(),
-        market: 'SYSTEM',
-        symbol: tradeSymbol,
-        contract: cfg.contract,
-        stake: cStake,
-        martingaleStep: mStep,
-        exitDigit: '-',
-        result: 'Failed',
-        pnl: 0,
-        balance: currentBalance,
-        switchInfo: `❌ Insufficient balance! Required: $${cStake.toFixed(2)}, Available: $${currentBalance.toFixed(2)}`,
-      });
-      return { 
-        localPnl: currentPnl, 
-        localBalance: currentBalance, 
-        cStake, 
-        mStep, 
-        inRecovery: mkt === 2, 
-        shouldBreak: false, 
-        won: false, 
-        contractExecuted: false 
-      };
     }
     
     const logId = addLog({
@@ -518,12 +496,8 @@ export default function RamzfxSpeedBot() {
     let newMStep = mStep;
     
     try {
-      // Wait for next tick if not in turbo mode
-      if (!turboMode) {
-        await waitForNextTick(tradeSymbol);
-      }
+      if (!turboMode) await waitForNextTick(tradeSymbol);
       
-      // Prepare buy parameters
       const buyParams: any = {
         contract_type: cfg.contract,
         symbol: tradeSymbol,
@@ -532,98 +506,65 @@ export default function RamzfxSpeedBot() {
         basis: 'stake',
         amount: cStake,
       };
-      if (needsBarrier(cfg.contract)) {
-        buyParams.barrier = cfg.barrier;
-      }
+      if (needsBarrier(cfg.contract)) buyParams.barrier = cfg.barrier;
       
-      // Execute buy with timeout
-      const buyPromise = derivApi.buyContract(buyParams);
-      const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Contract purchase timeout')), 10000)
-      );
+      const buyResponse = await derivApi.buyContract(buyParams);
       
-      const buyResponse = await Promise.race([buyPromise, timeoutPromise]) as any;
-      
-      if (!buyResponse?.contractId) {
-        throw new Error('Contract purchase failed - no contract ID received');
+      // Check if purchase was successful
+      if (!buyResponse || !buyResponse.contractId) {
+        throw new Error('Contract purchase failed - no contract ID returned');
       }
       
       contractExecuted = true;
       
-      // Copy trade if enabled
       if (copyTradingService.enabled) {
         copyTradingService.copyTrade({ ...buyParams, masterTradeId: buyResponse.contractId }).catch(console.error);
       }
       
-      // Wait for contract result with timeout
-      const resultPromise = derivApi.waitForContractResult(buyResponse.contractId);
-      const resultTimeout = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Contract result timeout')), 30000)
-      );
-      
-      const result = await Promise.race([resultPromise, resultTimeout]) as any;
+      const result = await derivApi.waitForContractResult(buyResponse.contractId);
       won = result.status === 'won';
-      const pnl = result.profit || 0;
+      const pnl = result.profit;
       
       updatedPnl = currentPnl + pnl;
       updatedBalance = currentBalance + pnl;
       setLocalBalance(updatedBalance);
       setNetProfit(updatedPnl);
       
-      const exitDigit = String(result.sellPrice ? getLastDigit(result.sellPrice) : 0);
+      // Refresh balance from auth context
+      await refreshBalance();
+      
+      const exitDigit = String(getLastDigit(result.sellPrice || 0));
       let switchInfo = '';
       
       if (won) {
         setWins(prev => prev + 1);
-        if (inRecovery) { 
-          switchInfo = '✓ Recovery WIN → Back to M1'; 
-          inRecovery = false; 
-        } else { 
-          switchInfo = '→ Continue M1'; 
-        }
+        if (inRecovery) { switchInfo = '✓ Recovery WIN → Back to M1'; inRecovery = false; }
+        else { switchInfo = '→ Continue M1'; }
         newMStep = 0;
         newCStake = baseStake;
       } else {
         setLosses(prev => prev + 1);
-        if (activeAccount?.is_virtual) {
-          recordLoss(cStake, tradeSymbol, 6000);
-        }
-        if (!inRecovery && m2Enabled) { 
-          inRecovery = true; 
-          switchInfo = '✗ Loss → Switch to M2 (Recovery)'; 
-        } else { 
-          switchInfo = inRecovery ? '→ Stay M2' : '→ Continue M1'; 
-        }
-        
-        // Handle martingale on loss
-        if (martingaleOn && !inRecovery) {
+        if (activeAccount?.is_virtual) recordLoss(cStake, tradeSymbol, 6000);
+        if (!inRecovery && m2Enabled) { inRecovery = true; switchInfo = '✗ Loss → Switch to M2 (Recovery)'; }
+        else { switchInfo = inRecovery ? '→ Stay M2' : '→ Continue M1'; }
+        if (martingaleOn) {
           const maxS = parseInt(martingaleMaxSteps) || 5;
           if (mStep < maxS) {
-            const multiplier = parseFloat(martingaleMultiplier) || 2;
-            newCStake = parseFloat((cStake * multiplier).toFixed(2));
-            newMStep = mStep + 1;
+            newCStake = parseFloat((cStake * (parseFloat(martingaleMultiplier) || 2)).toFixed(2));
+            newMStep++;
           } else { 
             newMStep = 0; 
-            newCStake = baseStake; 
+            newCStake = baseStake;
+            switchInfo += ' (Martingale max steps reached, resetting)';
           }
-        } else {
-          newCStake = baseStake;
-          newMStep = 0;
         }
       }
       
       setMartingaleStepState(newMStep);
       setCurrentStakeState(newCStake);
       
-      updateLog(logId, { 
-        exitDigit, 
-        result: won ? 'Win' : 'Loss', 
-        pnl, 
-        balance: updatedBalance, 
-        switchInfo 
-      });
+      updateLog(logId, { exitDigit, result: won ? 'Win' : 'Loss', pnl, balance: updatedBalance, switchInfo });
       
-      // Check TP/SL
       let shouldBreak = false;
       const tpValue = parseFloat(takeProfit);
       const slValue = parseFloat(stopLoss);
@@ -647,9 +588,9 @@ export default function RamzfxSpeedBot() {
         inRecovery, 
         shouldBreak, 
         won, 
-        contractExecuted: true 
+        contractExecuted: true,
+        insufficientFunds: false
       };
-      
     } catch (err: any) {
       console.error('Trade execution error:', err);
       updateLog(logId, { 
@@ -658,11 +599,23 @@ export default function RamzfxSpeedBot() {
         switchInfo: `❌ Trade failed: ${err.message || 'Unknown error'}` 
       });
       
-      // Wait a bit before continuing
-      if (!turboMode) {
-        await new Promise(r => setTimeout(r, 2000));
+      // Check if it's an insufficient funds error
+      if (err.message && (err.message.includes('balance') || err.message.includes('funds') || err.message.includes('amount'))) {
+        toast.error(`Insufficient funds! Balance: $${updatedBalance.toFixed(2)}`);
+        return { 
+          localPnl: updatedPnl, 
+          localBalance: updatedBalance, 
+          cStake: newCStake, 
+          mStep: newMStep, 
+          inRecovery, 
+          shouldBreak: true, 
+          won: false, 
+          contractExecuted: false,
+          insufficientFunds: true
+        };
       }
       
+      if (!turboMode) await delay(2000);
       return { 
         localPnl: updatedPnl, 
         localBalance: updatedBalance, 
@@ -671,329 +624,47 @@ export default function RamzfxSpeedBot() {
         inRecovery, 
         shouldBreak: false, 
         won: false, 
-        contractExecuted: false 
+        contractExecuted: false,
+        insufficientFunds: false
       };
     }
-  }, [addLog, updateLog, m2Enabled, martingaleOn, martingaleMultiplier, martingaleMaxSteps, takeProfit, stopLoss, turboMode, ensureConnection, activeAccount, recordLoss]);
+  }, [addLog, updateLog, m2Enabled, martingaleOn, martingaleMultiplier, martingaleMaxSteps, takeProfit, stopLoss, turboMode, ensureConnection, activeAccount, recordLoss, refreshBalance]);
   
-  // ========== WAIT FOR PATTERN WITH TIMEOUT - FIXED ==========
-  const waitForPattern = useCallback(async (
-    market: 1 | 2,
-    symbol: string,
-    maxAttempts: number = 200,
-    timeoutMs: number = 30000
-  ): Promise<boolean> => {
-    const startTime = Date.now();
-    let attempts = 0;
-    
-    while (runningRef.current && !shouldStopRef.current && attempts < maxAttempts) {
-      // Check timeout
-      if (Date.now() - startTime > timeoutMs) {
-        addLog({
-          time: new Date().toLocaleTimeString(),
-          market: market === 1 ? 'M1' : 'M2',
-          symbol,
-          contract: '',
-          stake: 0,
-          martingaleStep: 0,
-          exitDigit: '-',
-          result: 'Failed',
-          pnl: 0,
-          balance: localBalance,
-          switchInfo: '⚠️ Pattern waiting timeout',
-        });
-        return false;
-      }
-      
-      // Check for pattern match
-      if (checkStrategyForMarket(market, symbol)) {
-        return true;
-      }
-      
-      attempts++;
-      
-      // Use requestAnimationFrame for turbo mode, setTimeout for normal
-      if (turboMode) {
-        await new Promise(r => requestAnimationFrame(r));
-      } else {
-        await new Promise(r => setTimeout(r, 100));
-      }
-    }
-    
-    return false;
-  }, [checkStrategyForMarket, turboMode, addLog, localBalance]);
-  
-  // ========== WAIT FOR COMBINED PATTERN WITH TIMEOUT ==========
-  const waitForCombinedPattern = useCallback(async (
-    market: 1 | 2,
-    symbol: string,
-    patterns: string,
-    maxAttempts: number = 200,
-    timeoutMs: number = 30000
-  ): Promise<boolean> => {
-    const startTime = Date.now();
-    let attempts = 0;
-    
-    while (runningRef.current && !shouldStopRef.current && attempts < maxAttempts) {
-      if (Date.now() - startTime > timeoutMs) {
-        addLog({
-          time: new Date().toLocaleTimeString(),
-          market: 'COMBINED',
-          symbol,
-          contract: '',
-          stake: 0,
-          martingaleStep: 0,
-          exitDigit: '-',
-          result: 'Failed',
-          pnl: 0,
-          balance: localBalance,
-          switchInfo: '⚠️ Combined pattern waiting timeout',
-        });
-        return false;
-      }
-      
-      if (checkCombinedForSymbol(symbol, patterns)) {
-        return true;
-      }
-      
-      attempts++;
-      
-      if (turboMode) {
-        await new Promise(r => requestAnimationFrame(r));
-      } else {
-        await new Promise(r => setTimeout(r, 100));
-      }
-    }
-    
-    return false;
-  }, [checkCombinedForSymbol, turboMode, addLog, localBalance]);
-  
-  // ========== EXECUTE VIRTUAL HOOK - FIXED ==========
-  const executeVirtualHook = useCallback(async (
-    cfg: { contract: string; barrier: string; symbol: string },
-    tradeSymbol: string,
-    requiredLosses: number,
-    realCount: number,
-    cStake: number,
-    mStep: number,
-    mkt: 1 | 2,
-    currentBalance: number,
-    currentPnl: number,
-    baseStake: number
-  ): Promise<{
-    success: boolean;
-    newBalance: number;
-    newPnl: number;
-    newCStake: number;
-    newMStep: number;
-    inRecovery: boolean;
-    shouldBreak: boolean;
-  }> => {
-    setBotStatus('virtual_hook');
-    setVhStatus('waiting');
-    setVhFakeWins(0);
-    setVhFakeLosses(0);
-    setVhConsecLosses(0);
-    
-    let consecLosses = 0;
-    let virtualNum = 0;
-    let localBalanceVar = currentBalance;
-    let localPnlVar = currentPnl;
-    let localCStake = cStake;
-    let localMStep = mStep;
-    let localInRecovery = mkt === 2;
-    let localShouldBreak = false;
-    
-    // Virtual losses phase
-    while (consecLosses < requiredLosses && runningRef.current && !shouldStopRef.current) {
-      virtualNum++;
-      const vLogId = addLog({
-        time: new Date().toLocaleTimeString(),
-        market: 'VH',
-        symbol: tradeSymbol,
-        contract: cfg.contract,
-        stake: 0,
-        martingaleStep: 0,
-        exitDigit: '...',
-        result: 'Pending',
-        pnl: 0,
-        balance: localBalanceVar,
-        switchInfo: `Virtual #${virtualNum} (losses: ${consecLosses}/${requiredLosses})`
-      });
-      
-      try {
-        const vResult = await simulateVirtualContract(cfg.contract, cfg.barrier, tradeSymbol);
-        
-        if (!runningRef.current || shouldStopRef.current) {
-          return { success: false, newBalance: localBalanceVar, newPnl: localPnlVar, newCStake: localCStake, newMStep: localMStep, inRecovery: localInRecovery, shouldBreak: localShouldBreak };
-        }
-        
-        if (vResult.won) {
-          consecLosses = 0;
-          setVhConsecLosses(0);
-          setVhFakeWins(prev => prev + 1);
-          updateLog(vLogId, { exitDigit: String(vResult.digit), result: 'V-Win', switchInfo: `Virtual WIN → Losses reset` });
-        } else {
-          consecLosses++;
-          setVhConsecLosses(consecLosses);
-          setVhFakeLosses(prev => prev + 1);
-          updateLog(vLogId, { exitDigit: String(vResult.digit), result: 'V-Loss', switchInfo: `Virtual LOSS (${consecLosses}/${requiredLosses})` });
-        }
-      } catch (err) {
-        updateLog(vLogId, { result: 'V-Loss', exitDigit: '-', switchInfo: `Error: ${err}` });
-        return { success: false, newBalance: localBalanceVar, newPnl: localPnlVar, newCStake: localCStake, newMStep: localMStep, inRecovery: localInRecovery, shouldBreak: localShouldBreak };
-      }
-    }
-    
-    if (!runningRef.current || shouldStopRef.current) {
-      return { success: false, newBalance: localBalanceVar, newPnl: localPnlVar, newCStake: localCStake, newMStep: localMStep, inRecovery: localInRecovery, shouldBreak: localShouldBreak };
-    }
-    
-    setVhStatus('confirmed');
-    
-    // Real trades phase
-    for (let ri = 0; ri < realCount && runningRef.current && !shouldStopRef.current; ri++) {
-      const result = await executeRealTrade(
-        cfg, tradeSymbol, localCStake, localMStep, mkt, 
-        localBalanceVar, localPnlVar, baseStake
-      );
-      
-      if (!result.contractExecuted) continue;
-      
-      localPnlVar = result.localPnl;
-      localBalanceVar = result.localBalance;
-      localCStake = result.cStake;
-      localMStep = result.mStep;
-      localInRecovery = result.inRecovery;
-      
-      if (result.shouldBreak) {
-        localShouldBreak = true;
-        shouldStopRef.current = true;
-        break;
-      }
-      
-      if (result.won) break;
-    }
-    
-    setVhStatus('idle');
-    setVhConsecLosses(0);
-    
-    return {
-      success: true,
-      newBalance: localBalanceVar,
-      newPnl: localPnlVar,
-      newCStake: localCStake,
-      newMStep: localMStep,
-      inRecovery: localInRecovery,
-      shouldBreak: localShouldBreak
-    };
-  }, [addLog, updateLog, executeRealTrade]);
-  
-  // ========== START BOT - FIXED ==========
+  // ========== START BOT ==========
   const startBot = useCallback(async () => {
     if (!isAuthorized || isRunning) return;
     
     const connected = await ensureConnection();
     if (!connected) {
-      addLog({ 
-        time: new Date().toLocaleTimeString(), 
-        market: 'SYSTEM', 
-        symbol: 'ERROR', 
-        contract: 'CONNECTION', 
-        stake: 0, 
-        martingaleStep: 0, 
-        exitDigit: '-', 
-        result: 'Failed', 
-        pnl: 0, 
-        balance: authBalance, 
-        switchInfo: '❌ Failed to connect to Deriv' 
-      });
+      addLog({ time: new Date().toLocaleTimeString(), market: 'SYSTEM', symbol: 'ERROR', contract: 'CONNECTION', stake: 0, martingaleStep: 0, exitDigit: '-', result: 'Failed', pnl: 0, balance: authBalance, switchInfo: '❌ Failed to connect to Deriv' });
       return;
     }
     
     const baseStake = parseFloat(stake);
     if (baseStake < 0.35) {
-      addLog({ 
-        time: new Date().toLocaleTimeString(), 
-        market: 'SYSTEM', 
-        symbol: 'ERROR', 
-        contract: 'STAKE', 
-        stake: 0, 
-        martingaleStep: 0, 
-        exitDigit: '-', 
-        result: 'Failed', 
-        pnl: 0, 
-        balance: authBalance, 
-        switchInfo: '❌ Minimum stake is $0.35' 
-      });
+      addLog({ time: new Date().toLocaleTimeString(), market: 'SYSTEM', symbol: 'ERROR', contract: 'STAKE', stake: 0, martingaleStep: 0, exitDigit: '-', result: 'Failed', pnl: 0, balance: authBalance, switchInfo: '❌ Minimum stake is $0.35' });
+      toast.error('Minimum stake is $0.35');
       return;
     }
-    
     if (!m1Enabled && !m2Enabled) {
-      addLog({ 
-        time: new Date().toLocaleTimeString(), 
-        market: 'SYSTEM', 
-        symbol: 'ERROR', 
-        contract: 'CONFIG', 
-        stake: 0, 
-        martingaleStep: 0, 
-        exitDigit: '-', 
-        result: 'Failed', 
-        pnl: 0, 
-        balance: authBalance, 
-        switchInfo: '❌ Both M1 and M2 are disabled' 
-      });
+      addLog({ time: new Date().toLocaleTimeString(), market: 'SYSTEM', symbol: 'ERROR', contract: 'CONFIG', stake: 0, martingaleStep: 0, exitDigit: '-', result: 'Failed', pnl: 0, balance: authBalance, switchInfo: '❌ Both M1 and M2 are disabled' });
+      toast.error('Both markets are disabled');
       return;
     }
-    
     if (m1StrategyEnabled && m1StrategyMode === 'pattern' && !m1PatternValid) {
-      addLog({ 
-        time: new Date().toLocaleTimeString(), 
-        market: 'SYSTEM', 
-        symbol: 'ERROR', 
-        contract: 'STRATEGY', 
-        stake: 0, 
-        martingaleStep: 0, 
-        exitDigit: '-', 
-        result: 'Failed', 
-        pnl: 0, 
-        balance: authBalance, 
-        switchInfo: '❌ M1 pattern invalid (min 2 chars, E/O only)' 
-      });
+      addLog({ time: new Date().toLocaleTimeString(), market: 'SYSTEM', symbol: 'ERROR', contract: 'STRATEGY', stake: 0, martingaleStep: 0, exitDigit: '-', result: 'Failed', pnl: 0, balance: authBalance, switchInfo: '❌ M1 pattern invalid (min 2 chars, E/O only)' });
+      toast.error('Invalid M1 pattern');
       return;
     }
-    
     if (m2StrategyEnabled && m2StrategyMode === 'pattern' && !m2PatternValid) {
-      addLog({ 
-        time: new Date().toLocaleTimeString(), 
-        market: 'SYSTEM', 
-        symbol: 'ERROR', 
-        contract: 'STRATEGY', 
-        stake: 0, 
-        martingaleStep: 0, 
-        exitDigit: '-', 
-        result: 'Failed', 
-        pnl: 0, 
-        balance: authBalance, 
-        switchInfo: '❌ M2 pattern invalid' 
-      });
+      addLog({ time: new Date().toLocaleTimeString(), market: 'SYSTEM', symbol: 'ERROR', contract: 'STRATEGY', stake: 0, martingaleStep: 0, exitDigit: '-', result: 'Failed', pnl: 0, balance: authBalance, switchInfo: '❌ M2 pattern invalid' });
+      toast.error('Invalid M2 pattern');
       return;
     }
     
     if (authBalance < baseStake) {
-      addLog({ 
-        time: new Date().toLocaleTimeString(), 
-        market: 'SYSTEM', 
-        symbol: 'ERROR', 
-        contract: 'BALANCE', 
-        stake: 0, 
-        martingaleStep: 0, 
-        exitDigit: '-', 
-        result: 'Failed', 
-        pnl: 0, 
-        balance: authBalance, 
-        switchInfo: `❌ Insufficient balance! Required: $${baseStake.toFixed(2)}` 
-      });
+      addLog({ time: new Date().toLocaleTimeString(), market: 'SYSTEM', symbol: 'ERROR', contract: 'BALANCE', stake: 0, martingaleStep: 0, exitDigit: '-', result: 'Failed', pnl: 0, balance: authBalance, switchInfo: `❌ Insufficient balance! Required: $${baseStake.toFixed(2)}` });
+      toast.error(`Insufficient balance! Need $${baseStake.toFixed(2)}`);
       return;
     }
     
@@ -1013,14 +684,49 @@ export default function RamzfxSpeedBot() {
     let currentPnl = 0;
     let currentBalance = authBalance;
     
-    // Main trading loop
+    addLog({
+      time: new Date().toLocaleTimeString(),
+      market: 'SYSTEM',
+      symbol: 'BOT',
+      contract: 'START',
+      stake: baseStake,
+      martingaleStep: 0,
+      exitDigit: '-',
+      result: 'Pending',
+      pnl: 0,
+      balance: currentBalance,
+      switchInfo: `🚀 Bot started with stake $${baseStake.toFixed(2)} | TP: $${takeProfit} | SL: $${stopLoss}`,
+    });
+    
     while (runningRef.current && !shouldStopRef.current) {
-      // Check TP/SL
-      const tpValue = parseFloat(takeProfit);
-      const slValue = parseFloat(stopLoss);
+      // Refresh balance periodically
+      await refreshBalance();
+      currentBalance = authBalance;
+      setLocalBalance(currentBalance);
       
-      if (currentPnl >= tpValue || currentPnl <= -slValue) {
+      // Check TP/SL
+      if (currentPnl >= parseFloat(takeProfit) || currentPnl <= -parseFloat(stopLoss)) {
         shouldStopRef.current = true;
+        break;
+      }
+      
+      // Check for insufficient funds
+      if (currentBalance < cStake) {
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          market: 'SYSTEM',
+          symbol: 'BOT',
+          contract: 'STOP',
+          stake: cStake,
+          martingaleStep: mStep,
+          exitDigit: '-',
+          result: 'Failed',
+          pnl: currentPnl,
+          balance: currentBalance,
+          switchInfo: `❌ BOT STOPPED - Insufficient funds! Need $${cStake.toFixed(2)}, have $${currentBalance.toFixed(2)}`,
+        });
+        toast.error(`Bot stopped - Insufficient funds! Need $${cStake.toFixed(2)}`);
+        setBotStatus('insufficient_funds');
         break;
       }
       
@@ -1028,23 +734,31 @@ export default function RamzfxSpeedBot() {
       if (!derivApi.isConnected) {
         setBotStatus('reconnecting');
         const reconnected = await ensureConnection();
-        if (!reconnected) break;
+        if (!reconnected) {
+          addLog({
+            time: new Date().toLocaleTimeString(),
+            market: 'SYSTEM',
+            symbol: 'ERROR',
+            contract: 'CONNECTION',
+            stake: 0,
+            martingaleStep: 0,
+            exitDigit: '-',
+            result: 'Failed',
+            pnl: currentPnl,
+            balance: currentBalance,
+            switchInfo: `❌ Connection lost, bot stopped`,
+          });
+          toast.error('Connection lost! Bot stopped.');
+          break;
+        }
         setBotStatus(inRecovery ? 'recovery' : 'trading_m1');
       }
       
       const mkt: 1 | 2 = inRecovery ? 2 : 1;
       setCurrentMarket(mkt);
       
-      if (mkt === 1 && !m1Enabled) { 
-        if (m2Enabled) { 
-          inRecovery = true; 
-          continue; 
-        } else break; 
-      }
-      if (mkt === 2 && !m2Enabled) { 
-        inRecovery = false; 
-        continue; 
-      }
+      if (mkt === 1 && !m1Enabled) { if (m2Enabled) { inRecovery = true; continue; } else break; }
+      if (mkt === 2 && !m2Enabled) { inRecovery = false; continue; }
       
       const cfg = mkt === 1 
         ? { contract: m1Contract, barrier: m1Barrier, symbol: m1Symbol }
@@ -1062,12 +776,11 @@ export default function RamzfxSpeedBot() {
       // Combined strategy check (highest priority)
       if (combinedActive && combinedPatterns.trim() !== '') {
         setBotStatus('waiting_pattern');
-        
-        const matched = await waitForCombinedPattern(mkt, tradeSymbol, combinedPatterns);
+        const matched = await waitForPattern(tradeSymbol, () => checkCombinedForSymbol(tradeSymbol, combinedPatterns), 30000);
         
         if (matched && runningRef.current && !shouldStopRef.current) {
           setBotStatus('pattern_matched');
-          if (!turboMode) await new Promise(r => setTimeout(r, 300));
+          await delay(turboMode ? 100 : 300);
           addLog({ 
             time: new Date().toLocaleTimeString(), 
             market: 'COMBINED', 
@@ -1083,18 +796,35 @@ export default function RamzfxSpeedBot() {
           });
           combinedTradeTakenRef.current = true;
           patternMatched = true;
+        } else if (!matched) {
+          continue;
         }
       }
       
       // Regular strategy check (if no combined match)
       if (!patternMatched && strategyActive) {
         setBotStatus('waiting_pattern');
+        let checkFn: () => boolean;
         
-        const matched = await waitForPattern(mkt, tradeSymbol);
+        if (mkt === 1) {
+          if (m1StrategyMode === 'pattern') {
+            checkFn = () => checkPatternMatch(tradeSymbol, cleanM1Pattern);
+          } else {
+            checkFn = () => checkDigitCondition(tradeSymbol, m1DigitCondition, m1DigitCompare, m1DigitWindow);
+          }
+        } else {
+          if (m2StrategyMode === 'pattern') {
+            checkFn = () => checkPatternMatch(tradeSymbol, cleanM2Pattern);
+          } else {
+            checkFn = () => checkDigitCondition(tradeSymbol, m2DigitCondition, m2DigitCompare, m2DigitWindow);
+          }
+        }
+        
+        const matched = await waitForPattern(tradeSymbol, checkFn, 30000);
         
         if (matched && runningRef.current && !shouldStopRef.current) {
           setBotStatus('pattern_matched');
-          if (!turboMode) await new Promise(r => setTimeout(r, 300));
+          await delay(turboMode ? 100 : 300);
           patternTradeTakenRef.current = true;
         } else if (!matched) {
           continue;
@@ -1103,34 +833,80 @@ export default function RamzfxSpeedBot() {
       
       // Execute trade or virtual hook
       if (hookEnabled && !patternMatched) {
-        const hookResult = await executeVirtualHook(
-          cfg, tradeSymbol, requiredLosses, realCount, 
-          cStake, mStep, mkt, currentBalance, currentPnl, baseStake
-        );
+        setBotStatus('virtual_hook');
+        setVhStatus('waiting');
+        setVhFakeWins(0);
+        setVhFakeLosses(0);
+        setVhConsecLosses(0);
+        let consecLosses = 0;
+        let virtualNum = 0;
         
-        if (!hookResult.success) continue;
-        
-        currentPnl = hookResult.newPnl;
-        currentBalance = hookResult.newBalance;
-        cStake = hookResult.newCStake;
-        mStep = hookResult.newMStep;
-        inRecovery = hookResult.inRecovery;
-        
-        if (hookResult.shouldBreak) {
-          shouldStopRef.current = true;
-          break;
+        while (consecLosses < requiredLosses && runningRef.current && !shouldStopRef.current) {
+          virtualNum++;
+          const vLogId = addLog({ 
+            time: new Date().toLocaleTimeString(), 
+            market: 'VH', 
+            symbol: tradeSymbol, 
+            contract: cfg.contract, 
+            stake: 0, 
+            martingaleStep: 0, 
+            exitDigit: '...', 
+            result: 'Pending', 
+            pnl: 0, 
+            balance: currentBalance, 
+            switchInfo: `Virtual #${virtualNum} (losses: ${consecLosses}/${requiredLosses})` 
+          });
+          
+          try {
+            const vResult = await simulateVirtualContract(cfg.contract, cfg.barrier, tradeSymbol);
+            if (!runningRef.current || shouldStopRef.current) break;
+            if (vResult.won) {
+              consecLosses = 0;
+              setVhConsecLosses(0);
+              setVhFakeWins(prev => prev + 1);
+              updateLog(vLogId, { exitDigit: String(vResult.digit), result: 'V-Win', switchInfo: `Virtual WIN → Losses reset` });
+            } else {
+              consecLosses++;
+              setVhConsecLosses(consecLosses);
+              setVhFakeLosses(prev => prev + 1);
+              updateLog(vLogId, { exitDigit: String(vResult.digit), result: 'V-Loss', switchInfo: `Virtual LOSS (${consecLosses}/${requiredLosses})` });
+            }
+            await delay(100);
+          } catch (err) {
+            updateLog(vLogId, { result: 'V-Loss', exitDigit: '-', switchInfo: `Error: ${err}` });
+            break;
+          }
         }
         
-        if (!turboMode) await new Promise(r => setTimeout(r, 400));
+        if (!runningRef.current || shouldStopRef.current) break;
+        setVhStatus('confirmed');
+        
+        for (let ri = 0; ri < realCount && runningRef.current && !shouldStopRef.current; ri++) {
+          const result = await executeRealTrade(cfg, tradeSymbol, cStake, mStep, mkt, currentBalance, currentPnl, baseStake);
+          if (!result.contractExecuted) continue;
+          currentPnl = result.localPnl;
+          currentBalance = result.localBalance;
+          cStake = result.cStake;
+          mStep = result.mStep;
+          inRecovery = result.inRecovery;
+          
+          if (result.insufficientFunds) {
+            shouldStopRef.current = true;
+            setBotStatus('insufficient_funds');
+            break;
+          }
+          if (result.shouldBreak) { shouldStopRef.current = true; break; }
+          if (result.won) break;
+        }
+        setVhStatus('idle');
+        setVhConsecLosses(0);
+        if (strategyActive) patternTradeTakenRef.current = true;
+        await delay(turboMode ? 100 : 400);
         continue;
       }
       
       // Normal trade execution
-      const result = await executeRealTrade(
-        cfg, tradeSymbol, cStake, mStep, mkt, 
-        currentBalance, currentPnl, baseStake
-      );
-      
+      const result = await executeRealTrade(cfg, tradeSymbol, cStake, mStep, mkt, currentBalance, currentPnl, baseStake);
       if (!result.contractExecuted) continue;
       
       currentPnl = result.localPnl;
@@ -1139,40 +915,62 @@ export default function RamzfxSpeedBot() {
       mStep = result.mStep;
       inRecovery = result.inRecovery;
       
-      if (result.shouldBreak) {
+      if (result.insufficientFunds) {
         shouldStopRef.current = true;
+        setBotStatus('insufficient_funds');
         break;
       }
-      
+      if (result.shouldBreak) { shouldStopRef.current = true; break; }
       if (strategyActive) patternTradeTakenRef.current = true;
-      if (!turboMode) await new Promise(r => setTimeout(r, 400));
+      await delay(turboMode ? 100 : 400);
     }
     
     setIsRunning(false);
     runningRef.current = false;
-    setBotStatus('idle');
+    if (shouldStopRef.current && botStatus !== 'insufficient_funds') {
+      setBotStatus('idle');
+      addLog({
+        time: new Date().toLocaleTimeString(),
+        market: 'SYSTEM',
+        symbol: 'BOT',
+        contract: 'STOP',
+        stake: 0,
+        martingaleStep: 0,
+        exitDigit: '-',
+        result: 'Pending',
+        pnl: netProfit,
+        balance: currentBalance,
+        switchInfo: `🛑 Bot stopped. Final P/L: $${netProfit.toFixed(2)}`,
+      });
+      toast.info(`Bot stopped. Final P/L: $${netProfit.toFixed(2)}`);
+    }
     shouldStopRef.current = false;
-  }, [
-    isAuthorized, isRunning, stake, m1Enabled, m2Enabled, 
-    m1Contract, m2Contract, m1Barrier, m2Barrier, m1Symbol, m2Symbol,
-    m1HookEnabled, m2HookEnabled, m1VirtualLossCount, m2VirtualLossCount,
-    m1RealCount, m2RealCount, m1StrategyEnabled, m2StrategyEnabled,
-    m1StrategyMode, m2StrategyMode, m1PatternValid, m2PatternValid,
-    m1CombinedEnabled, m2CombinedEnabled, m1CombinedPatterns, m2CombinedPatterns,
-    martingaleOn, martingaleMultiplier, martingaleMaxSteps, takeProfit, stopLoss, 
-    turboMode, authBalance, addLog, ensureConnection, waitForPattern, 
-    waitForCombinedPattern, executeVirtualHook, executeRealTrade
-  ]);
+  }, [isAuthorized, isRunning, stake, m1Enabled, m2Enabled, m1Contract, m2Contract, m1Barrier, m2Barrier, m1Symbol, m2Symbol, m1HookEnabled, m2HookEnabled, m1VirtualLossCount, m2VirtualLossCount, m1RealCount, m2RealCount, m1StrategyEnabled, m2StrategyEnabled, m1StrategyMode, m2StrategyMode, m1PatternValid, m2PatternValid, m1CombinedEnabled, m2CombinedEnabled, m1CombinedPatterns, m2CombinedPatterns, martingaleOn, martingaleMultiplier, martingaleMaxSteps, takeProfit, stopLoss, turboMode, authBalance, addLog, ensureConnection, checkPatternMatch, checkDigitCondition, checkCombinedForSymbol, executeRealTrade, waitForPattern, cleanM1Pattern, cleanM2Pattern, refreshBalance, netProfit]);
   
   const stopBot = useCallback(() => {
     shouldStopRef.current = true;
     runningRef.current = false;
     setIsRunning(false);
+    const currentStatus = botStatus;
     setBotStatus('idle');
     patternTradeTakenRef.current = false;
     combinedTradeTakenRef.current = false;
     toast.info('🛑 Bot stopped manually');
-  }, []);
+    
+    addLog({
+      time: new Date().toLocaleTimeString(),
+      market: 'SYSTEM',
+      symbol: 'BOT',
+      contract: 'STOP',
+      stake: 0,
+      martingaleStep: 0,
+      exitDigit: '-',
+      result: 'Pending',
+      pnl: netProfit,
+      balance: localBalance,
+      switchInfo: `🛑 Bot manually stopped. P/L: $${netProfit.toFixed(2)}`,
+    });
+  }, [addLog, netProfit, localBalance, botStatus]);
   
   const winRate = wins + losses > 0 ? ((wins / (wins + losses)) * 100).toFixed(1) : '0.0';
   const statusConfig: Record<BotStatus, { icon: string; label: string; color: string }> = {
@@ -1183,6 +981,7 @@ export default function RamzfxSpeedBot() {
     pattern_matched: { icon: '✅', label: 'PATTERN MATCHED', color: 'text-profit' },
     virtual_hook: { icon: '🎣', label: 'VIRTUAL HOOK', color: 'text-primary' },
     reconnecting: { icon: '🔄', label: 'RECONNECTING...', color: 'text-orange-400' },
+    insufficient_funds: { icon: '💰', label: 'INSUFFICIENT FUNDS', color: 'text-rose-400' },
   };
   const status = statusConfig[botStatus];
   
@@ -1308,6 +1107,7 @@ export default function RamzfxSpeedBot() {
                             value={m1VirtualLossCount} 
                             onChange={e => setM1VirtualLossCount(e.target.value)} 
                             className="bg-slate-800/50"
+                            disabled={isRunning}
                           />
                         </div>
                         <div>
@@ -1317,6 +1117,7 @@ export default function RamzfxSpeedBot() {
                             value={m1RealCount} 
                             onChange={e => setM1RealCount(e.target.value)} 
                             className="bg-slate-800/50"
+                            disabled={isRunning}
                           />
                         </div>
                       </div>
@@ -1335,6 +1136,7 @@ export default function RamzfxSpeedBot() {
                           value={m1CombinedPatterns} 
                           onChange={e => setM1CombinedPatterns(e.target.value)} 
                           className="h-20 text-xs font-mono bg-slate-800/50"
+                          disabled={isRunning}
                         />
                       </div>
                     )}
@@ -1351,6 +1153,7 @@ export default function RamzfxSpeedBot() {
                             variant={m1StrategyMode === 'pattern' ? 'default' : 'outline'} 
                             className="flex-1"
                             onClick={() => setM1StrategyMode('pattern')}
+                            disabled={isRunning}
                           >
                             Pattern (E/O)
                           </Button>
@@ -1358,6 +1161,7 @@ export default function RamzfxSpeedBot() {
                             variant={m1StrategyMode === 'digit' ? 'default' : 'outline'} 
                             className="flex-1"
                             onClick={() => setM1StrategyMode('digit')}
+                            disabled={isRunning}
                           >
                             Digit Condition
                           </Button>
@@ -1371,6 +1175,7 @@ export default function RamzfxSpeedBot() {
                               value={m1Pattern} 
                               onChange={e => setM1Pattern(e.target.value)} 
                               className="bg-slate-800/50 font-mono"
+                              disabled={isRunning}
                             />
                             {m1Pattern && m1PatternValid === false && (
                               <p className="text-xs text-rose-400 mt-1">Invalid pattern! Use only E and O</p>
@@ -1382,7 +1187,7 @@ export default function RamzfxSpeedBot() {
                           <div className="grid grid-cols-3 gap-2">
                             <div>
                               <label className="text-xs text-slate-400 mb-1 block">Condition</label>
-                              <Select value={m1DigitCondition} onValueChange={setM1DigitCondition}>
+                              <Select value={m1DigitCondition} onValueChange={setM1DigitCondition} disabled={isRunning}>
                                 <SelectTrigger className="bg-slate-800/50">
                                   <SelectValue />
                                 </SelectTrigger>
@@ -1404,6 +1209,7 @@ export default function RamzfxSpeedBot() {
                                 value={m1DigitCompare} 
                                 onChange={e => setM1DigitCompare(e.target.value)} 
                                 className="bg-slate-800/50"
+                                disabled={isRunning}
                               />
                             </div>
                             <div>
@@ -1415,6 +1221,7 @@ export default function RamzfxSpeedBot() {
                                 value={m1DigitWindow} 
                                 onChange={e => setM1DigitWindow(e.target.value)} 
                                 className="bg-slate-800/50"
+                                disabled={isRunning}
                               />
                             </div>
                           </div>
@@ -1512,6 +1319,7 @@ export default function RamzfxSpeedBot() {
                             value={m2VirtualLossCount} 
                             onChange={e => setM2VirtualLossCount(e.target.value)} 
                             className="bg-slate-800/50"
+                            disabled={isRunning}
                           />
                         </div>
                         <div>
@@ -1521,6 +1329,7 @@ export default function RamzfxSpeedBot() {
                             value={m2RealCount} 
                             onChange={e => setM2RealCount(e.target.value)} 
                             className="bg-slate-800/50"
+                            disabled={isRunning}
                           />
                         </div>
                       </div>
@@ -1539,6 +1348,7 @@ export default function RamzfxSpeedBot() {
                           value={m2CombinedPatterns} 
                           onChange={e => setM2CombinedPatterns(e.target.value)} 
                           className="h-20 text-xs font-mono bg-slate-800/50"
+                          disabled={isRunning}
                         />
                       </div>
                     )}
@@ -1555,6 +1365,7 @@ export default function RamzfxSpeedBot() {
                             variant={m2StrategyMode === 'pattern' ? 'default' : 'outline'} 
                             className="flex-1"
                             onClick={() => setM2StrategyMode('pattern')}
+                            disabled={isRunning}
                           >
                             Pattern (E/O)
                           </Button>
@@ -1562,6 +1373,7 @@ export default function RamzfxSpeedBot() {
                             variant={m2StrategyMode === 'digit' ? 'default' : 'outline'} 
                             className="flex-1"
                             onClick={() => setM2StrategyMode('digit')}
+                            disabled={isRunning}
                           >
                             Digit Condition
                           </Button>
@@ -1575,6 +1387,7 @@ export default function RamzfxSpeedBot() {
                               value={m2Pattern} 
                               onChange={e => setM2Pattern(e.target.value)} 
                               className="bg-slate-800/50 font-mono"
+                              disabled={isRunning}
                             />
                             {m2Pattern && m2PatternValid === false && (
                               <p className="text-xs text-rose-400 mt-1">Invalid pattern! Use only E and O</p>
@@ -1586,7 +1399,7 @@ export default function RamzfxSpeedBot() {
                           <div className="grid grid-cols-3 gap-2">
                             <div>
                               <label className="text-xs text-slate-400 mb-1 block">Condition</label>
-                              <Select value={m2DigitCondition} onValueChange={setM2DigitCondition}>
+                              <Select value={m2DigitCondition} onValueChange={setM2DigitCondition} disabled={isRunning}>
                                 <SelectTrigger className="bg-slate-800/50">
                                   <SelectValue />
                                 </SelectTrigger>
@@ -1608,6 +1421,7 @@ export default function RamzfxSpeedBot() {
                                 value={m2DigitCompare} 
                                 onChange={e => setM2DigitCompare(e.target.value)} 
                                 className="bg-slate-800/50"
+                                disabled={isRunning}
                               />
                             </div>
                             <div>
@@ -1619,6 +1433,7 @@ export default function RamzfxSpeedBot() {
                                 value={m2DigitWindow} 
                                 onChange={e => setM2DigitWindow(e.target.value)} 
                                 className="bg-slate-800/50"
+                                disabled={isRunning}
                               />
                             </div>
                           </div>
@@ -1705,6 +1520,7 @@ export default function RamzfxSpeedBot() {
                       onChange={e => setMartingaleMultiplier(e.target.value)} 
                       className="w-24 h-8 text-sm bg-slate-800/50"
                       placeholder="x"
+                      disabled={isRunning}
                     />
                   </div>
                   <div className="flex items-center gap-2">
@@ -1717,6 +1533,7 @@ export default function RamzfxSpeedBot() {
                       onChange={e => setMartingaleMaxSteps(e.target.value)} 
                       className="w-20 h-8 text-sm bg-slate-800/50"
                       placeholder="steps"
+                      disabled={isRunning}
                     />
                   </div>
                 </>
@@ -1831,20 +1648,20 @@ export default function RamzfxSpeedBot() {
                     </tr>
                   ) : (
                     logEntries.map(e => (
-                      <tr key={e.id} className={`border-b border-slate-800/30 transition-colors ${
-                        e.market === 'M1' ? 'bg-blue-500/5 hover:bg-blue-500/10' : 
-                        e.market === 'M2' ? 'bg-purple-500/5 hover:bg-purple-500/10' :
-                        e.market === 'VH' ? 'bg-indigo-500/5 hover:bg-indigo-500/10' : 
-                        e.market === 'COMBINED' ? 'bg-green-500/5 hover:bg-green-500/10' : 
-                        'hover:bg-slate-800/20'
+                      <tr key={e.id} className={`border-b border-slate-800/30 hover:bg-slate-800/20 transition-colors ${
+                        e.market === 'M1' ? 'border-l-2 border-l-blue-500' : 
+                        e.market === 'VH' ? 'border-l-2 border-l-indigo-500' : 
+                        e.market === 'COMBINED' ? 'border-l-2 border-l-green-500' : 
+                        e.market === 'SYSTEM' ? 'border-l-2 border-l-amber-500' :
+                        'border-l-2 border-l-purple-500'
                       }`}>
                         <td className="p-1.5 font-mono text-[9px] text-slate-300 whitespace-nowrap">{e.time}</td>
                         <td className={`p-1.5 font-bold text-[10px] ${
                           e.market === 'M1' ? 'text-blue-400' : 
-                          e.market === 'M2' ? 'text-purple-400' :
                           e.market === 'VH' ? 'text-indigo-400' : 
                           e.market === 'COMBINED' ? 'text-green-400' : 
-                          'text-slate-400'
+                          e.market === 'SYSTEM' ? 'text-amber-400' :
+                          'text-purple-400'
                         }`}>
                           {e.market}
                         </td>
@@ -1860,12 +1677,11 @@ export default function RamzfxSpeedBot() {
                         <td className="p-1.5 text-center font-mono font-bold text-[11px] text-slate-200">{e.exitDigit}</td>
                         <td className="p-1.5 text-center">
                           <span className={`px-1.5 py-0.5 rounded text-[9px] font-medium ${
-                            e.result === 'Win' ? 'bg-emerald-500/20 text-emerald-400' : 
-                            e.result === 'V-Win' ? 'bg-emerald-500/20 text-emerald-400' :
-                            e.result === 'Loss' ? 'bg-rose-500/20 text-rose-400' : 
-                            e.result === 'V-Loss' ? 'bg-rose-500/20 text-rose-400' :
-                            e.result === 'Pending' ? 'bg-yellow-500/20 text-yellow-500' :
-                            'bg-red-500/20 text-red-400'
+                            e.result === 'Win' || e.result === 'V-Win' 
+                              ? 'bg-emerald-500/20 text-emerald-400' 
+                              : e.result === 'Loss' || e.result === 'V-Loss' 
+                              ? 'bg-rose-500/20 text-rose-400' 
+                              : 'bg-yellow-500/20 text-yellow-500'
                           }`}>
                             {e.result === 'Pending' ? '...' : e.result === 'V-Win' ? '✓ V-Win' : e.result === 'V-Loss' ? '✗ V-Loss' : e.result}
                           </span>
@@ -1889,4 +1705,4 @@ export default function RamzfxSpeedBot() {
       </div>
     </>
   );
-   }
+}
