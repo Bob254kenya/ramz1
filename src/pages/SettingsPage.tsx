@@ -1,22 +1,18 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { derivApi, type MarketSymbol } from '@/services/deriv-api';
-import { getLastDigit, analyzeDigits, calculateRSI, calculateMACD, calculateBollingerBands } from '@/services/analysis';
-import { copyTradingService } from '@/services/copy-trading-service';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { derivApi } from '@/services/deriv-api';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
-import { Progress } from '@/components/ui/progress';
 import { toast } from 'sonner';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/contexts/AuthContext';
 import {
-  TrendingUp, TrendingDown, Activity, BarChart3, ArrowUp, ArrowDown, Minus,
-  Target, ShieldAlert, Gauge, Volume2, VolumeX, Clock, Zap, Trophy, Play, Pause, StopCircle, Eye, EyeOff, RefreshCw,
-  Plus, X, LineChart, Anchor, Copy, Users, Wifi, WifiOff, Combine, Sparkles, RotateCw
+  TrendingUp, TrendingDown, Activity, Zap, Play, Pause, StopCircle,
+  Target, ShieldAlert, Volume2, VolumeX, Trophy, Wifi, WifiOff,
+  RefreshCw, Plus, X, Anchor, Copy, Users, Combine, Sparkles, RotateCw
 } from 'lucide-react';
 
 // ============================================
@@ -47,104 +43,34 @@ const notificationStyles = `
 }
 
 @keyframes float {
-  0% {
-    transform: translateY(0px) rotate(0deg);
-  }
-  50% {
-    transform: translateY(-10px) rotate(5deg);
-  }
-  100% {
-    transform: translateY(0px) rotate(0deg);
-  }
+  0% { transform: translateY(0px) rotate(0deg); }
+  50% { transform: translateY(-10px) rotate(5deg); }
+  100% { transform: translateY(0px) rotate(0deg); }
 }
 
 @keyframes bounce {
-  0%, 100% {
-    transform: translateY(0);
-  }
-  50% {
-    transform: translateY(-5px);
-  }
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-5px); }
 }
 
 @keyframes pulse {
-  0%, 100% {
-    transform: scale(1);
-  }
-  50% {
-    transform: scale(1.05);
-  }
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.05); }
 }
 
 @keyframes spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
 @keyframes fadeInUp {
-  from {
-    opacity: 0;
-    transform: translateY(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-@keyframes fadeInLeft {
-  from {
-    opacity: 0;
-    transform: translateX(-20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
-}
-
-@keyframes fadeInRight {
-  from {
-    opacity: 0;
-    transform: translateX(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 @keyframes glowPulse {
-  0%, 100% {
-    box-shadow: 0 0 5px rgba(63, 185, 80, 0.3);
-  }
-  50% {
-    box-shadow: 0 0 20px rgba(63, 185, 80, 0.6);
-  }
-}
-
-@keyframes shimmer {
-  0% {
-    background-position: -1000px 0;
-  }
-  100% {
-    background-position: 1000px 0;
-  }
-}
-
-@keyframes rotateIn {
-  from {
-    opacity: 0;
-    transform: rotate(-180deg) scale(0.5);
-  }
-  to {
-    opacity: 1;
-    transform: rotate(0) scale(1);
-  }
+  0%, 100% { box-shadow: 0 0 5px rgba(63, 185, 80, 0.3); }
+  50% { box-shadow: 0 0 20px rgba(63, 185, 80, 0.6); }
 }
 
 .animate-slide-up-center {
@@ -167,28 +93,8 @@ const notificationStyles = `
   animation: pulse 1s ease-in-out infinite;
 }
 
-.animate-spin-slow {
-  animation: spin 1s linear infinite;
-}
-
-.animate-fade-up {
-  animation: fadeInUp 0.5s ease-out forwards;
-}
-
-.animate-fade-left {
-  animation: fadeInLeft 0.5s ease-out forwards;
-}
-
-.animate-fade-right {
-  animation: fadeInRight 0.5s ease-out forwards;
-}
-
 .animate-glow {
   animation: glowPulse 2s ease-in-out infinite;
-}
-
-.animate-rotate-in {
-  animation: rotateIn 0.4s cubic-bezier(0.34, 1.2, 0.64, 1) forwards;
 }
 `;
 
@@ -385,28 +291,6 @@ const ALL_MARKETS = [
   { symbol: 'RBRK200', name: 'Range Break 200', group: 'range' },
 ];
 
-const GROUPS = [
-  { value: 'all', label: 'All' },
-  { value: 'vol1s', label: 'Vol 1s' },
-  { value: 'vol', label: 'Vol' },
-  { value: 'jump', label: 'Jump' },
-  { value: 'bear', label: 'Bear' },
-  { value: 'bull', label: 'Bull' },
-  { value: 'step', label: 'Step' },
-  { value: 'range', label: 'Range' },
-];
-
-const TIMEFRAMES = ['1m','3m','5m','15m','30m','1h','4h','12h','1d'];
-
-// UPDATED: Candle config from 1000 to 20000
-const CANDLE_CONFIG = {
-  minCandles: 1000,
-  maxCandles: 20000,
-  defaultCandles: 1000,
-};
-
-const TICK_RANGES = [50, 100, 200, 300, 500, 1000];
-
 const CONTRACT_TYPES = [
   { value: 'CALL', label: 'Rise' },
   { value: 'PUT', label: 'Fall' },
@@ -417,17 +301,6 @@ const CONTRACT_TYPES = [
   { value: 'DIGITOVER', label: 'Digits Over' },
   { value: 'DIGITUNDER', label: 'Digits Under' },
 ];
-
-type IndicatorType = 'RSI' | 'BB' | 'MA' | 'MACD';
-interface Indicator {
-  id: string;
-  type: IndicatorType;
-  enabled: boolean;
-}
-
-interface Candle {
-  open: number; high: number; low: number; close: number; time: number;
-}
 
 interface TradeRecord {
   id: string;
@@ -444,325 +317,6 @@ interface TradeRecord {
   virtualRequired?: number;
 }
 
-interface DigitStats {
-  frequency: Record<number, number>;
-  percentages: Record<number, number>;
-  mostCommon: number;
-  leastCommon: number;
-  totalTicks: number;
-  evenPercentage: number;
-  oddPercentage: number;
-  overPercentage: number;
-  underPercentage: number;
-  last26Digits: number[];
-  tickPrices: number[];
-}
-
-// Independent tick storage for digit analysis
-const globalTickHistory: { [symbol: string]: number[] } = {};
-const globalTickPrices: { [symbol: string]: number[] } = {};
-const tickCallbacks: { [symbol: string]: (() => void)[] } = [];
-
-function getTickHistory(symbol: string): number[] {
-  return globalTickHistory[symbol] || [];
-}
-
-function getTickPrices(symbol: string): number[] {
-  return globalTickPrices[symbol] || [];
-}
-
-function addTick(symbol: string, digit: number, price: number) {
-  if (!globalTickHistory[symbol]) globalTickHistory[symbol] = [];
-  if (!globalTickPrices[symbol]) globalTickPrices[symbol] = [];
-  
-  globalTickHistory[symbol].push(digit);
-  globalTickPrices[symbol].push(price);
-  
-  if (globalTickHistory[symbol].length > 2000) globalTickHistory[symbol].shift();
-  if (globalTickPrices[symbol].length > 2000) globalTickPrices[symbol].shift();
-  
-  if (tickCallbacks[symbol]) {
-    tickCallbacks[symbol].forEach(cb => cb());
-  }
-}
-
-function subscribeToTicks(symbol: string, callback: () => void) {
-  if (!tickCallbacks[symbol]) tickCallbacks[symbol] = [];
-  tickCallbacks[symbol].push(callback);
-  return () => {
-    tickCallbacks[symbol] = tickCallbacks[symbol].filter(cb => cb !== callback);
-  };
-}
-
-function buildCandles(prices: number[], times: number[], tf: string): Candle[] {
-  if (prices.length === 0) return [];
-  const seconds: Record<string,number> = {
-    '1m':60,'3m':180,'5m':300,'15m':900,'30m':1800,'1h':3600,'4h':14400,'12h':43200,'1d':86400,
-  };
-  const interval = seconds[tf] || 60;
-  const candles: Candle[] = [];
-  let current: Candle | null = null;
-
-  for (let i = 0; i < prices.length; i++) {
-    const p = prices[i];
-    const t = times[i] || Date.now()/1000 + i;
-    const bucket = Math.floor(t / interval) * interval;
-
-    if (!current || current.time !== bucket) {
-      if (current) candles.push(current);
-      current = { open: p, high: p, low: p, close: p, time: bucket };
-    } else {
-      current.high = Math.max(current.high, p);
-      current.low = Math.min(current.low, p);
-      current.close = p;
-    }
-  }
-  if (current) candles.push(current);
-  return candles;
-}
-
-function calcEMA(prices: number[], period: number): number[] {
-  const emaValues: number[] = [];
-  if (prices.length === 0) return emaValues;
-  
-  const k = 2 / (period + 1);
-  let ema = prices[0];
-  
-  for (let i = 0; i < prices.length; i++) {
-    if (i === 0) {
-      ema = prices[i];
-    } else {
-      ema = prices[i] * k + ema * (1 - k);
-    }
-    emaValues.push(ema);
-  }
-  return emaValues;
-}
-
-function calcSMA(prices: number[], period: number): number[] {
-  const smaValues: number[] = [];
-  for (let i = 0; i < prices.length; i++) {
-    if (i < period - 1) {
-      smaValues.push(prices[i]);
-    } else {
-      const sum = prices.slice(i - period + 1, i + 1).reduce((a, b) => a + b, 0);
-      smaValues.push(sum / period);
-    }
-  }
-  return smaValues;
-}
-
-function calcEMASeries(prices: number[], period: number): (number | null)[] {
-  const result: (number | null)[] = [];
-  if (prices.length < period) return prices.map(() => null);
-  const k = 2 / (period + 1);
-  let ema = prices.slice(0, period).reduce((a, b) => a + b, 0) / period;
-  for (let i = 0; i < period; i++) result.push(null);
-  result[period - 1] = ema;
-  for (let i = period; i < prices.length; i++) {
-    ema = prices[i] * k + ema * (1 - k);
-    result.push(ema);
-  }
-  return result;
-}
-
-function calcSMASeries(prices: number[], period: number): (number | null)[] {
-  const result: (number | null)[] = [];
-  for (let i = 0; i < prices.length; i++) {
-    if (i < period - 1) { result.push(null); continue; }
-    const slice = prices.slice(i - period + 1, i + 1);
-    result.push(slice.reduce((a, b) => a + b, 0) / period);
-  }
-  return result;
-}
-
-function calcBBSeries(prices: number[], period: number, mult: number = 2) {
-  const upper: (number | null)[] = [];
-  const middle: (number | null)[] = [];
-  const lower: (number | null)[] = [];
-  for (let i = 0; i < prices.length; i++) {
-    if (i < period - 1) { upper.push(null); middle.push(null); lower.push(null); continue; }
-    const slice = prices.slice(i - period + 1, i + 1);
-    const ma = slice.reduce((a, b) => a + b, 0) / period;
-    const variance = slice.reduce((s, p) => s + (p - ma) ** 2, 0) / period;
-    const std = Math.sqrt(variance);
-    upper.push(ma + mult * std);
-    middle.push(ma);
-    lower.push(ma - mult * std);
-  }
-  return { upper, middle, lower };
-}
-
-function calcRSISeries(prices: number[], period: number = 14): (number | null)[] {
-  const result: (number | null)[] = [null];
-  if (prices.length < period + 1) return prices.map(() => null);
-  let gains = 0, losses = 0;
-  for (let i = 1; i <= period; i++) {
-    const d = prices[i] - prices[i - 1];
-    if (d > 0) gains += d; else losses -= d;
-    result.push(null);
-  }
-  let avgGain = gains / period;
-  let avgLoss = losses / period;
-  const rsi0 = avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss);
-  result[period] = rsi0;
-  for (let i = period + 1; i < prices.length; i++) {
-    const d = prices[i] - prices[i - 1];
-    avgGain = (avgGain * (period - 1) + Math.max(0, d)) / period;
-    avgLoss = (avgLoss * (period - 1) + Math.max(0, -d)) / period;
-    result.push(avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss));
-  }
-  return result;
-}
-
-function calcMACDSeries(prices: number[]) {
-  const ema12 = calcEMA(prices, 12);
-  const ema26 = calcEMA(prices, 26);
-  const macdLine: number[] = [];
-  const signalLine: number[] = [];
-  
-  for (let i = 0; i < prices.length; i++) {
-    const macd = ema12[i] - ema26[i];
-    macdLine.push(macd);
-    
-    if (i < 9) {
-      signalLine.push(macd);
-    } else {
-      const signal = macdLine.slice(i - 8, i + 1).reduce((a, b) => a + b, 0) / 9;
-      signalLine.push(signal);
-    }
-  }
-  
-  return { macd: macdLine, signal: signalLine };
-}
-
-function mapCandlesToPriceIndices(prices: number[], times: number[], tf: string): number[] {
-  const seconds: Record<string, number> = {
-    '1m':60,'3m':180,'5m':300,'15m':900,'30m':1800,'1h':3600,'4h':14400,'12h':43200,'1d':86400,
-  };
-  const interval = seconds[tf] || 60;
-  const indices: number[] = [];
-  let lastBucket = -1;
-  for (let i = 0; i < prices.length; i++) {
-    const t = times[i] || Date.now() / 1000 + i;
-    const bucket = Math.floor(t / interval) * interval;
-    if (bucket !== lastBucket) {
-      if (lastBucket !== -1) indices.push(i - 1);
-      lastBucket = bucket;
-    }
-  }
-  indices.push(prices.length - 1);
-  return indices;
-}
-
-function calcSR(prices: number[]) {
-  if (prices.length < 10) return { support: 0, resistance: 0 };
-  const sorted = [...prices].sort((a, b) => a - b);
-  const p5 = Math.floor(sorted.length * 0.05);
-  const p95 = Math.floor(sorted.length * 0.95);
-  return { support: sorted[p5], resistance: sorted[Math.min(p95, sorted.length - 1)] };
-}
-
-function calcMACDFull(prices: number[]) {
-  const ema12 = calcEMA(prices, 12);
-  const ema26 = calcEMA(prices, 26);
-  const macd = (ema12[ema12.length - 1] || 0) - (ema26[ema26.length - 1] || 0);
-  const signal = macd * 0.8;
-  return { macd, signal, histogram: macd - signal };
-}
-
-function calculateDigitStats(symbol: string, tickRange: number): DigitStats {
-  const ticks = getTickHistory(symbol);
-  const tickPricesData = getTickPrices(symbol);
-  const recentTicks = ticks.slice(-tickRange);
-  
-  const frequency: Record<number, number> = {};
-  for (let i = 0; i <= 9; i++) frequency[i] = 0;
-  
-  for (const digit of recentTicks) {
-    frequency[digit] = (frequency[digit] || 0) + 1;
-  }
-  
-  const percentages: Record<number, number> = {};
-  for (let i = 0; i <= 9; i++) {
-    percentages[i] = (frequency[i] / recentTicks.length) * 100;
-  }
-  
-  let mostCommon = 0;
-  let leastCommon = 0;
-  let maxFreq = 0;
-  let minFreq = Infinity;
-  
-  for (let i = 0; i <= 9; i++) {
-    if (frequency[i] > maxFreq) {
-      maxFreq = frequency[i];
-      mostCommon = i;
-    }
-    if (frequency[i] < minFreq) {
-      minFreq = frequency[i];
-      leastCommon = i;
-    }
-  }
-  
-  const evenCount = recentTicks.filter(d => d % 2 === 0).length;
-  const oddCount = recentTicks.length - evenCount;
-  const overCount = recentTicks.filter(d => d > 4).length;
-  const underCount = recentTicks.length - overCount;
-  const last26Digits = ticks.slice(-26);
-  const last26Prices = tickPricesData.slice(-26);
-  
-  return {
-    frequency,
-    percentages,
-    mostCommon,
-    leastCommon,
-    totalTicks: recentTicks.length,
-    evenPercentage: recentTicks.length > 0 ? (evenCount / recentTicks.length * 100) : 50,
-    oddPercentage: recentTicks.length > 0 ? (oddCount / recentTicks.length * 100) : 50,
-    overPercentage: recentTicks.length > 0 ? (overCount / recentTicks.length * 100) : 50,
-    underPercentage: recentTicks.length > 0 ? (underCount / recentTicks.length * 100) : 50,
-    last26Digits,
-    tickPrices: last26Prices,
-  };
-}
-
-// ============================================
-// VIRTUAL CONTRACT SIMULATION FUNCTION
-// ============================================
-
-function simulateVirtualContract(
-  contractType: string, barrier: string, symbol: string
-): Promise<{ won: boolean; digit: number }> {
-  return new Promise((resolve, reject) => {
-    const timeout = setTimeout(() => {
-      unsub();
-      reject(new Error('Virtual contract timeout'));
-    }, 5000);
-    
-    const unsub = derivApi.onMessage((data: any) => {
-      if (data.tick && data.tick.symbol === symbol) {
-        clearTimeout(timeout);
-        unsub();
-        const digit = getLastDigit(data.tick.quote);
-        const b = parseInt(barrier) || 0;
-        let won = false;
-        switch (contractType) {
-          case 'DIGITEVEN': won = digit % 2 === 0; break;
-          case 'DIGITODD': won = digit % 2 !== 0; break;
-          case 'DIGITMATCH': won = digit === b; break;
-          case 'DIGITDIFF': won = digit !== b; break;
-          case 'DIGITOVER': won = digit > b; break;
-          case 'DIGITUNDER': won = digit < b; break;
-          case 'CALL': won = true; break;
-          case 'PUT': won = false; break;
-          default: won = false;
-        }
-        resolve({ won, digit });
-      }
-    });
-  });
-}
-
 // ============================================
 // CHECK CONNECTION FUNCTION
 // ============================================
@@ -774,129 +328,19 @@ const checkConnection = async (): Promise<boolean> => {
   return true;
 };
 
-// ============================================
-// PATTERN PARSING FUNCTIONS FOR COMBINED STRATEGY
-// ============================================
-
-type PatternToken = 
-  | { type: 'digit'; value: number }
-  | { type: 'eo'; value: 'E' | 'O' }
-  | { type: 'ou'; value: 'O' | 'U' }; // Over/Under
-
-function parseCombinedPattern(patternStr: string): PatternToken[] | null {
-  const trimmed = patternStr.trim().toUpperCase();
-  if (trimmed.length === 0) return null;
-  
-  const tokens: PatternToken[] = [];
-  for (let i = 0; i < trimmed.length; i++) {
-    const ch = trimmed[i];
-    if (ch >= '0' && ch <= '9') {
-      tokens.push({ type: 'digit', value: parseInt(ch, 10) });
-    } else if (ch === 'E' || ch === 'O') {
-      tokens.push({ type: 'eo', value: ch });
-    } else if (ch === 'U') {
-      tokens.push({ type: 'ou', value: 'U' });
-    } else {
-      return null;
-    }
-  }
-  return tokens;
-}
-
-function checkPatternMatch(ticks: number[], tickPrices: number[], tokens: PatternToken[]): boolean {
-  if (ticks.length < tokens.length) return false;
-  
-  const recentDigits = ticks.slice(-tokens.length);
-  const recentPrices = tickPrices.slice(-tokens.length);
-  
-  for (let i = 0; i < tokens.length; i++) {
-    const token = tokens[i];
-    const digit = recentDigits[i];
-    const price = recentPrices[i];
-    const prevPrice = i > 0 ? recentPrices[i - 1] : undefined;
-    
-    switch (token.type) {
-      case 'digit':
-        if (digit !== token.value) return false;
-        break;
-      case 'eo':
-        const isEven = digit % 2 === 0;
-        if ((token.value === 'E' && !isEven) || (token.value === 'O' && isEven)) return false;
-        break;
-      case 'ou':
-        const isOver = digit > 4;
-        if ((token.value === 'O' && !isOver) || (token.value === 'U' && isOver)) return false;
-        break;
-    }
-  }
-  return true;
-}
-
-// Animation variants for motion components
+// Animation variants
 const fadeInUpVariants = {
   hidden: { opacity: 0, y: 30 },
   visible: { opacity: 1, y: 0, transition: { duration: 0.5, ease: "easeOut" } }
 };
 
-const fadeInLeftVariants = {
-  hidden: { opacity: 0, x: -30 },
-  visible: { opacity: 1, x: 0, transition: { duration: 0.5, ease: "easeOut" } }
-};
-
-const fadeInRightVariants = {
-  hidden: { opacity: 0, x: 30 },
-  visible: { opacity: 1, x: 0, transition: { duration: 0.5, ease: "easeOut" } }
-};
-
-const staggerContainerVariants = {
-  hidden: { opacity: 0 },
-  visible: {
-    opacity: 1,
-    transition: {
-      staggerChildren: 0.1,
-      delayChildren: 0.2
-    }
-  }
-};
-
-export default function TradingChart() {
-  const { isAuthorized, balance: apiBalance, refreshBalance } = useAuth();
+export default function RamzfxSpeedBot() {
+  const { isAuthorized, refreshBalance } = useAuth();
   const [symbol, setSymbol] = useState('R_100');
-  const [prices, setPrices] = useState<number[]>([]);
-  const [times, setTimes] = useState<number[]>([]);
-  const subscribedRef = useRef(false);
-  const subscriptionRef = useRef<any>(null);
-  const reconnectAttempts = useRef(0);
-  const [digitStats, setDigitStats] = useState<DigitStats>({
-    frequency: {},
-    percentages: {},
-    mostCommon: 0,
-    leastCommon: 0,
-    totalTicks: 0,
-    evenPercentage: 50,
-    oddPercentage: 50,
-    overPercentage: 50,
-    underPercentage: 50,
-    last26Digits: [],
-    tickPrices: [],
-  });
-
-  // Contract type for display
-  const [selectedContractType, setSelectedContractType] = useState('CALL');
-  const [selectedPrediction, setSelectedPrediction] = useState('5');
-
+  
   const [tradeHistory, setTradeHistory] = useState<TradeRecord[]>([]);
   const [voiceEnabled, setVoiceEnabled] = useState(false);
   const lastSpokenSignal = useRef('');
-
-  const [strategyEnabled, setStrategyEnabled] = useState(false);
-  const [strategyMode, setStrategyMode] = useState<'pattern' | 'digit' | 'combined'>('pattern');
-  const [patternInput, setPatternInput] = useState('');
-  const [digitCondition, setDigitCondition] = useState('==');
-  const [digitCompare, setDigitCompare] = useState('5');
-  const [digitWindow, setDigitWindow] = useState('3');
-  const [combinedPatterns, setCombinedPatterns] = useState<string>('');
-  const [useOrLogic, setUseOrLogic] = useState(false); // true = OR, false = AND (all patterns must match)
 
   const [botRunning, setBotRunning] = useState(false);
   const [botPaused, setBotPaused] = useState(false);
@@ -917,7 +361,7 @@ export default function TradingChart() {
     maxTrades: '50',
   });
   const [botStats, setBotStats] = useState({ trades: 0, wins: 0, losses: 0, pnl: 0, currentStake: 0, consecutiveLosses: 0 });
-  const [turboMode, setTurboMode] = useState(true); // TURBO MODE DEFAULT TRUE
+  const [turboMode, setTurboMode] = useState(true);
 
   // ============================================
   // VIRTUAL HOOK STATE VARIABLES
@@ -929,243 +373,12 @@ export default function TradingChart() {
   const [vhFakeLosses, setVhFakeLosses] = useState(0);
   const [vhConsecLosses, setVhConsecLosses] = useState(0);
   const [vhStatus, setVhStatus] = useState<'idle' | 'waiting' | 'confirmed' | 'failed'>('idle');
-  const patternTradeTakenRef = useRef(false);
 
   // Page entrance animation state
   const [pageLoaded, setPageLoaded] = useState(false);
   useEffect(() => {
     setPageLoaded(true);
   }, []);
-
-  // Helper function to get symbol based on contract type, digit, and price movement
-  const getDigitSymbol = useCallback((digit: number, price: number, prevPrice: number | null, type: string, barrier: string): string => {
-    const barrierNum = parseInt(barrier);
-    
-    switch (type) {
-      case 'CALL':
-      case 'PUT':
-        if (prevPrice === null) return '?';
-        if (price > prevPrice) return 'R';
-        if (price < prevPrice) return 'F';
-        return 'C';
-        
-      case 'DIGITOVER':
-        if (digit > barrierNum) return 'O';
-        if (digit === barrierNum) return 'S';
-        return 'U';
-        
-      case 'DIGITUNDER':
-        if (digit < barrierNum) return 'U';
-        if (digit === barrierNum) return 'S';
-        return 'O';
-        
-      case 'DIGITEVEN':
-        return digit % 2 === 0 ? 'E' : 'O';
-        
-      case 'DIGITODD':
-        return digit % 2 !== 0 ? 'O' : 'E';
-        
-      case 'DIGITMATCH':
-        return digit === barrierNum ? 'S' : 'D';
-        
-      case 'DIGITDIFF':
-        return digit !== barrierNum ? 'D' : 'S';
-        
-      default:
-        return digit.toString();
-    }
-  }, []);
-
-  // Function to update digit stats
-  const updateDigitStats = useCallback(() => {
-    const stats = calculateDigitStats(symbol, 1000);
-    setDigitStats(stats);
-  }, [symbol]);
-
-  // Subscribe to real-time tick updates
-  useEffect(() => {
-    updateDigitStats();
-    
-    const unsubscribe = subscribeToTicks(symbol, () => {
-      updateDigitStats();
-    });
-    
-    return unsubscribe;
-  }, [symbol, updateDigitStats]);
-
-  // Load history
-  useEffect(() => {
-    let active = true;
-    let timeoutId: NodeJS.Timeout;
-    
-    const cleanup = async () => {
-      if (subscriptionRef.current) {
-        try {
-          await derivApi.unsubscribeTicks(symbol as MarketSymbol);
-          console.log(`Unsubscribed from ${symbol}`);
-        } catch (err) {
-          console.error('Error unsubscribing:', err);
-        }
-        subscriptionRef.current = null;
-      }
-    };
-
-    const load = async () => {
-      if (!derivApi.isConnected) {
-        if (reconnectAttempts.current < 3) {
-          reconnectAttempts.current++;
-          timeoutId = setTimeout(load, 2000);
-        }
-        return;
-      }
-      
-      reconnectAttempts.current = 0;
-      
-      await cleanup();
-      
-      try {
-        setPrices([]);
-        setTimes([]);
-        
-        const hist = await derivApi.getTickHistory(symbol as MarketSymbol, CANDLE_CONFIG.defaultCandles);
-        if (!active) return;
-        
-        const historicalDigits = (hist.history.prices || []).map(p => getLastDigit(p));
-        const historicalPrices = hist.history.prices || [];
-        globalTickHistory[symbol] = historicalDigits;
-        globalTickPrices[symbol] = historicalPrices;
-        
-        setPrices(hist.history.prices || []);
-        setTimes(hist.history.times || []);
-        
-        updateDigitStats();
-
-        if (!subscribedRef.current || !subscriptionRef.current) {
-          subscriptionRef.current = await derivApi.subscribeTicks(symbol as MarketSymbol, (data: any) => {
-            if (!active || !data.tick) return;
-            
-            const quote = data.tick.quote;
-            const digit = getLastDigit(quote);
-            const epoch = data.tick.epoch;
-            
-            addTick(symbol, digit, quote);
-            
-            setPrices(prev => {
-              const newPrices = [...prev, quote];
-              return newPrices.slice(-CANDLE_CONFIG.maxCandles);
-            });
-            
-            setTimes(prev => {
-              const newTimes = [...prev, epoch];
-              return newTimes.slice(-CANDLE_CONFIG.maxCandles);
-            });
-          });
-          subscribedRef.current = true;
-          console.log(`Subscribed to ${symbol} for real-time updates`);
-          toast.success(`Connected to ${symbol} market`, { duration: 2000 });
-        }
-      } catch (err) {
-        console.error('Error loading market data:', err);
-        toast.error(`Failed to load ${symbol} data`);
-      }
-    };
-    
-    load();
-    
-    return () => {
-      active = false;
-      if (timeoutId) clearTimeout(timeoutId);
-      cleanup();
-      subscribedRef.current = false;
-    };
-  }, [symbol, updateDigitStats]);
-
-  useEffect(() => {
-    const checkConnection = setInterval(() => {
-      if (!derivApi.isConnected) {
-        console.log('Connection lost, attempting to reconnect...');
-        setPrices([]);
-        setTimes([]);
-        setSymbol(prev => prev);
-      }
-    }, 5000);
-
-    return () => clearInterval(checkConnection);
-  }, []);
-
-  const handleBotSymbolChange = useCallback((newSymbol: string) => {
-    setBotConfig(prev => ({ ...prev, botSymbol: newSymbol }));
-    setSymbol(newSymbol);
-  }, []);
-
-  const cleanPattern = patternInput.toUpperCase().replace(/[^EO]/g, '');
-  const patternValid = cleanPattern.length >= 2;
-
-  // ============================================
-  // COMBINED STRATEGY PARSING
-  // ============================================
-  const parsedPatterns = useMemo(() => {
-    if (!combinedPatterns.trim()) return [];
-    const patterns = combinedPatterns.split(',').map(p => p.trim().toUpperCase()).filter(p => p.length > 0);
-    return patterns.map(p => parseCombinedPattern(p)).filter((p): p is PatternToken[] => p !== null);
-  }, [combinedPatterns]);
-
-  const checkPatternMatch = useCallback((): boolean => {
-    const ticks = getTickHistory(botConfig.botSymbol);
-    const tickPrices = getTickPrices(botConfig.botSymbol);
-    if (ticks.length < 2) return false;
-    
-    // Original E/O pattern strategy
-    if (strategyMode === 'pattern') {
-      if (ticks.length < cleanPattern.length) return false;
-      const recent = ticks.slice(-cleanPattern.length);
-      for (let i = 0; i < cleanPattern.length; i++) {
-        const expected = cleanPattern[i];
-        const actual = recent[i] % 2 === 0 ? 'E' : 'O';
-        if (expected !== actual) return false;
-      }
-      return true;
-    }
-    
-    // Digit condition strategy
-    if (strategyMode === 'digit') {
-      const win = parseInt(digitWindow) || 3;
-      const comp = parseInt(digitCompare);
-      if (ticks.length < win) return false;
-      const recent = ticks.slice(-win);
-      return recent.every(d => {
-        switch (digitCondition) {
-          case '>': return d > comp;
-          case '<': return d < comp;
-          case '>=': return d >= comp;
-          case '<=': return d <= comp;
-          case '==': return d === comp;
-          case '!=': return d !== comp;
-          default: return false;
-        }
-      });
-    }
-    
-    // Combined strategy (multiple patterns)
-    if (strategyMode === 'combined') {
-      if (parsedPatterns.length === 0) return true;
-      
-      if (useOrLogic) {
-        // OR: any pattern matches
-        return parsedPatterns.some(patterns => checkPatternMatch(ticks, tickPrices, patterns));
-      } else {
-        // AND: all patterns must match (using sliding window for each pattern)
-        return parsedPatterns.every(patterns => checkPatternMatch(ticks, tickPrices, patterns));
-      }
-    }
-    
-    return true;
-  }, [botConfig.botSymbol, cleanPattern, strategyMode, digitWindow, digitCondition, digitCompare, parsedPatterns, useOrLogic]);
-
-  const checkStrategyCondition = useCallback((): boolean => {
-    if (!strategyEnabled) return true;
-    return checkPatternMatch();
-  }, [strategyEnabled, checkPatternMatch]);
 
   // Helper function to get outcome symbol for trade
   const getOutcomeSymbol = useCallback((trade: TradeRecord): string => {
@@ -1249,7 +462,6 @@ export default function TradingChart() {
     currentPnl: number,
     isVirtual: boolean = false
   ): Promise<{ won: boolean; profit: number; newPnl: number; shouldStop: boolean }> => {
-    // Check connection before executing trade
     if (!derivApi.isConnected) {
       toast.error('No connection to Deriv. Cannot execute trade.');
       return { won: false, profit: 0, newPnl: currentPnl, shouldStop: false };
@@ -1271,7 +483,6 @@ export default function TradingChart() {
     try {
       const { contractId } = await derivApi.buyContract(params);
       
-      // Add to trade history (open status)
       const tr: TradeRecord = {
         id: contractId,
         time: Date.now(),
@@ -1296,7 +507,6 @@ export default function TradingChart() {
           : t
       ));
       
-      // Check TP/SL
       const tpValue = parseFloat(botConfig.takeProfit);
       const slValue = parseFloat(botConfig.stopLoss);
       let shouldStop = false;
@@ -1319,9 +529,47 @@ export default function TradingChart() {
     }
   }, [botConfig, voiceEnabled, getOutcomeSymbol]);
 
-  // ============================================
-  // VIRTUAL TRADE FUNCTION (for hook phase) - NO NOTIFICATIONS
-  // ============================================
+  // Helper function to get last digit
+  const getLastDigit = (price: number): number => {
+    const priceStr = price.toString();
+    const match = priceStr.match(/(\d)(?:\.|$)/);
+    return match ? parseInt(match[1]) : 0;
+  };
+
+  // Virtual contract simulation
+  const simulateVirtualContract = useCallback(async (
+    contractType: string, barrier: string, symbol: string
+  ): Promise<{ won: boolean; digit: number }> => {
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        unsub();
+        reject(new Error('Virtual contract timeout'));
+      }, 5000);
+      
+      const unsub = derivApi.onMessage((data: any) => {
+        if (data.tick && data.tick.symbol === symbol) {
+          clearTimeout(timeout);
+          unsub();
+          const digit = getLastDigit(data.tick.quote);
+          const b = parseInt(barrier) || 0;
+          let won = false;
+          switch (contractType) {
+            case 'DIGITEVEN': won = digit % 2 === 0; break;
+            case 'DIGITODD': won = digit % 2 !== 0; break;
+            case 'DIGITMATCH': won = digit === b; break;
+            case 'DIGITDIFF': won = digit !== b; break;
+            case 'DIGITOVER': won = digit > b; break;
+            case 'DIGITUNDER': won = digit < b; break;
+            case 'CALL': won = true; break;
+            case 'PUT': won = false; break;
+            default: won = false;
+          }
+          resolve({ won, digit });
+        }
+      });
+    });
+  }, []);
+
   const executeVirtualTrade = useCallback(async (
     currentLossCount: number,
     requiredLosses: number
@@ -1335,12 +583,11 @@ export default function TradingChart() {
       
       const won = result.won;
       
-      // Add virtual trade to history - NO TOAST NOTIFICATIONS
       const virtualTrade: TradeRecord = {
         id: `virtual-${Date.now()}-${Math.random()}`,
         time: Date.now(),
         type: botConfig.contractType,
-        stake: 0, // No stake for virtual trades
+        stake: 0,
         profit: 0,
         status: won ? 'won' : 'lost',
         symbol: botConfig.botSymbol,
@@ -1351,11 +598,9 @@ export default function TradingChart() {
       };
       setTradeHistory(prev => [virtualTrade, ...prev]);
       
-      // NO toast notifications for virtual trades
       return { won, profit: 0 };
     } catch (err: any) {
       console.error('Virtual trade error:', err);
-      // Add failed virtual trade - NO TOAST
       const failedTrade: TradeRecord = {
         id: `virtual-failed-${Date.now()}`,
         time: Date.now(),
@@ -1371,21 +616,19 @@ export default function TradingChart() {
       setTradeHistory(prev => [failedTrade, ...prev]);
       return { won: false, profit: 0 };
     }
-  }, [botConfig]);
+  }, [botConfig, simulateVirtualContract]);
 
   // ============================================
-  // START BOT WITH VIRTUAL HOOK INTEGRATION - NO VIRTUAL NOTIFICATIONS
+  // START BOT WITH VIRTUAL HOOK INTEGRATION
   // ============================================
   const startBot = useCallback(async () => {
     if (!isAuthorized) { toast.error('Login to Deriv first'); return; }
     
-    // Check connection before starting
     if (!derivApi.isConnected) {
       toast.error('Not connected to Deriv. Please check your connection.');
       return;
     }
     
-    // Sync balance before starting
     if (refreshBalance) await refreshBalance();
     
     shouldStopRef.current = false;
@@ -1393,7 +636,6 @@ export default function TradingChart() {
     setBotPaused(false);
     botRunningRef.current = true;
     botPausedRef.current = false;
-    patternTradeTakenRef.current = false;
     
     const baseStake = parseFloat(botConfig.stake) || 1;
     const sl = parseFloat(botConfig.stopLoss) || 10;
@@ -1409,7 +651,6 @@ export default function TradingChart() {
     let losses = 0;
     let consLosses = 0;
     
-    // Reset hook states
     setVhFakeWins(0);
     setVhFakeLosses(0);
     setVhConsecLosses(0);
@@ -1423,41 +664,21 @@ export default function TradingChart() {
         continue;
       }
       
-      // Check TP/SL limits
       if (trades >= maxT || pnl <= -sl || pnl >= tp) {
         const reason = trades >= maxT ? 'Max trades reached' : pnl <= -sl ? 'Stop loss hit' : 'Take profit reached';
         toast.info(`🤖 Bot stopped: ${reason}`);
         break;
       }
 
-      // Check strategy condition if enabled
-      if (strategyEnabled) {
-        let conditionMet = false;
-        while (botRunningRef.current && !conditionMet && !shouldStopRef.current) {
-          conditionMet = checkStrategyCondition();
-          if (!conditionMet) {
-            await new Promise(r => setTimeout(r, 500));
-          }
-        }
-        if (!botRunningRef.current || shouldStopRef.current) break;
-      }
-
-      // ============================================
-      // VIRTUAL HOOK LOGIC - NO NOTIFICATIONS
-      // ============================================
       if (hookEnabled) {
         setVhStatus('waiting');
         let consecLossesHook = 0;
         const requiredLosses = parseInt(virtualLossCount) || 3;
         const realTradesCount = parseInt(realCount) || 2;
-        let virtualTradeNum = 0;
 
-        // VIRTUAL PHASE: Accumulate consecutive losses - NO TOASTS
         while (consecLossesHook < requiredLosses && botRunningRef.current && !shouldStopRef.current) {
-          virtualTradeNum++;
-          
-          if (voiceEnabled && virtualTradeNum % 5 === 0) {
-            speak(`Virtual trade ${virtualTradeNum}, losses ${consecLossesHook} of ${requiredLosses}`);
+          if (voiceEnabled && (consecLossesHook % 3 === 0 || consecLossesHook === requiredLosses - 1)) {
+            speak(`Virtual trade, losses ${consecLossesHook} of ${requiredLosses}`);
           }
           
           try {
@@ -1469,12 +690,10 @@ export default function TradingChart() {
               consecLossesHook = 0;
               setVhConsecLosses(0);
               setVhFakeWins(prev => prev + 1);
-              // NO toast notification
             } else {
               consecLossesHook++;
               setVhConsecLosses(consecLossesHook);
               setVhFakeLosses(prev => prev + 1);
-              // NO toast notification
             }
             
             await new Promise(r => setTimeout(r, 200));
@@ -1487,13 +706,11 @@ export default function TradingChart() {
         if (!botRunningRef.current || shouldStopRef.current) break;
 
         setVhStatus('confirmed');
-        // NO toast notification for hook confirmation
         
         if (voiceEnabled) {
           speak(`Virtual hook confirmed after ${consecLossesHook} losses. Starting ${realTradesCount} real trades.`);
         }
 
-        // REAL PHASE: Execute real trades - BREAK ON FIRST WIN
         let winOccurred = false;
         
         for (let ri = 0; ri < realTradesCount && botRunningRef.current && !winOccurred && !shouldStopRef.current; ri++) {
@@ -1538,7 +755,6 @@ export default function TradingChart() {
         
         setVhStatus('idle');
         setVhConsecLosses(0);
-        patternTradeTakenRef.current = true;
         
         if (!turboMode && !shouldStopRef.current) {
           await new Promise(r => setTimeout(r, 500));
@@ -1547,9 +763,6 @@ export default function TradingChart() {
         continue;
       }
 
-      // ============================================
-      // NORMAL TRADING (NO HOOK)
-      // ============================================
       if (!derivApi.isConnected) {
         toast.error('Connection lost. Stopping bot.');
         break;
@@ -1597,7 +810,7 @@ export default function TradingChart() {
     if (voiceEnabled && (pnl <= -sl || pnl >= tp)) {
       speak(`Bot stopped. Final profit ${pnl.toFixed(2)} dollars`);
     }
-  }, [isAuthorized, botConfig, voiceEnabled, speak, strategyEnabled, checkStrategyCondition, hookEnabled, virtualLossCount, realCount, executeRealTrade, executeVirtualTrade, turboMode, refreshBalance]);
+  }, [isAuthorized, botConfig, voiceEnabled, speak, hookEnabled, virtualLossCount, realCount, executeRealTrade, executeVirtualTrade, turboMode, refreshBalance]);
 
   const stopBot = useCallback(() => {
     shouldStopRef.current = true;
@@ -1613,6 +826,11 @@ export default function TradingChart() {
     toast.info(botPausedRef.current ? '⏸ Bot paused' : '▶ Bot resumed');
   }, []);
 
+  const handleBotSymbolChange = useCallback((newSymbol: string) => {
+    setBotConfig(prev => ({ ...prev, botSymbol: newSymbol }));
+    setSymbol(newSymbol);
+  }, []);
+
   const totalTrades = tradeHistory.filter(t => t.status !== 'open' && !t.isVirtual).length;
   const winsCount = tradeHistory.filter(t => t.status === 'won' && !t.isVirtual).length;
   const lossesCount = tradeHistory.filter(t => t.status === 'lost' && !t.isVirtual).length;
@@ -1621,178 +839,98 @@ export default function TradingChart() {
 
   return (
     <motion.div 
-      className="space-y-4 max-w-[1920px] mx-auto p-4"
+      className="min-h-screen bg-gradient-to-br from-slate-950 to-slate-900 p-6"
       initial={{ opacity: 0 }}
       animate={{ opacity: pageLoaded ? 1 : 0 }}
       transition={{ duration: 0.5 }}
     >
       <style>{notificationStyles}</style>
       
-      {/* TP/SL Notification Popup */}
       <TPSLNotificationPopup />
       
-      {/* Header with Animation */}
-      <motion.div 
-        variants={fadeInUpVariants}
-        initial="hidden"
-        animate={pageLoaded ? "visible" : "hidden"}
-        className="flex items-center justify-between flex-wrap gap-2"
-      >
-        <div>
-          <motion.h1 
-            className="text-xl font-bold text-foreground flex items-center gap-2"
-            initial={{ scale: 0.9 }}
-            animate={{ scale: 1 }}
-            transition={{ duration: 0.5, type: "spring" }}
-          >
-            <BarChart3 className="w-5 h-5 text-primary animate-rotate-in" />
-            Ramzfx Trading Chart
-            <Sparkles className="w-4 h-4 text-warning animate-pulse-slow" />
-          </motion.h1>
-          <motion.p 
-            className="text-xs text-muted-foreground"
-            initial={{ x: -20, opacity: 0 }}
-            animate={{ x: 0, opacity: 1 }}
-            transition={{ delay: 0.2, duration: 0.5 }}
-          >
-            Speed Bot Control Panel
-          </motion.p>
-        </div>
+      <div className="max-w-5xl mx-auto">
+        {/* Header */}
         <motion.div 
-          className="flex items-center gap-2"
-          initial={{ x: 20, opacity: 0 }}
-          animate={{ x: 0, opacity: 1 }}
-          transition={{ delay: 0.1, duration: 0.5 }}
-        >
-          {/* Connection Status */}
-          <div className={`flex items-center gap-1 px-2 py-1 rounded-full text-[10px] ${
-            derivApi.isConnected ? 'bg-profit/20 text-profit' : 'bg-loss/20 text-loss'
-          }`}>
-            {derivApi.isConnected ? (
-              <>
-                <Wifi className="w-3 h-3" />
-                <span>Connected</span>
-              </>
-            ) : (
-              <>
-                <WifiOff className="w-3 h-3" />
-                <span>Disconnected refresh page</span>
-              </>
-            )}
-          </div>
-          <Badge className="font-mono text-sm animate-glow" variant="outline">
-            {prices[prices.length - 1]?.toFixed(4) || '0.0000'}
-          </Badge>
-        </motion.div>
-      </motion.div>
-
-      {/* Market Selector with Animation */}
-      <motion.div 
-        variants={fadeInLeftVariants}
-        initial="hidden"
-        animate={pageLoaded ? "visible" : "hidden"}
-        transition={{ delay: 0.05 }}
-        className="bg-card border border-border rounded-xl p-3"
-      >
-        <div className="flex flex-wrap gap-1 mb-2">
-          {GROUPS.map(g => (
-            <Button key={g.value} size="sm" variant={g.value === 'all' ? 'default' : 'outline'}
-              className="h-6 text-[10px] px-2" onClick={() => {}}>
-              {g.label}
-            </Button>
-          ))}
-        </div>
-        <div className="flex flex-wrap gap-1 max-h-20 overflow-auto">
-          {ALL_MARKETS.map(m => (
-            <Button key={m.symbol} size="sm"
-              variant={symbol === m.symbol ? 'default' : 'ghost'}
-              className={`h-6 text-[9px] px-2 transition-all duration-200 hover:scale-105 ${symbol === m.symbol ? 'bg-primary text-primary-foreground' : 'text-muted-foreground'}`}
-              onClick={() => {
-                setSymbol(m.symbol);
-                handleBotSymbolChange(m.symbol);
-              }}>
-              {m.name}
-            </Button>
-          ))}
-        </div>
-      </motion.div>
-
-      <div className="grid grid-cols-1 gap-4">
-        {/* RIGHT: Bot + Trade History - With Animation */}
-        <motion.div 
-          variants={fadeInRightVariants}
+          variants={fadeInUpVariants}
           initial="hidden"
           animate={pageLoaded ? "visible" : "hidden"}
-          transition={{ delay: 0.2 }}
-          className="space-y-3"
+          className="mb-6 text-center"
         >
-          {/* Voice AI Toggle */}
-          <div className="bg-card border border-primary/30 rounded-xl p-3">
-            <div className="flex items-center justify-between">
-              <h3 className="text-xs font-semibold text-foreground flex items-center gap-1">
-                <Zap className="w-3.5 h-3.5 text-primary" />Ramzfx AI Voice Signals
-              </h3>
+          <h1 className="text-3xl font-bold bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent flex items-center justify-center gap-2">
+            <Zap className="w-7 h-7 text-emerald-400" />
+            Ramzfx Speed Bot
+            <Sparkles className="w-5 h-5 text-yellow-400 animate-pulse" />
+          </h1>
+          <p className="text-slate-400 text-sm mt-1">Automated Trading Terminal • Real-time Execution</p>
+        </motion.div>
+
+        {/* Main Bot Card */}
+        <motion.div 
+          variants={fadeInUpVariants}
+          initial="hidden"
+          animate={pageLoaded ? "visible" : "hidden"}
+          transition={{ delay: 0.1 }}
+          className={`bg-slate-900/80 backdrop-blur-sm border rounded-2xl p-5 shadow-2xl transition-all duration-300 ${
+            botRunning ? 'border-emerald-500/50 shadow-emerald-500/20' : 'border-slate-700'
+          }`}
+        >
+          {/* Header Controls */}
+          <div className="flex items-center justify-between flex-wrap gap-3 mb-5 pb-3 border-b border-slate-700">
+            <div className="flex items-center gap-3">
+              <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs ${
+                derivApi.isConnected ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'
+              }`}>
+                {derivApi.isConnected ? <Wifi className="w-3.5 h-3.5" /> : <WifiOff className="w-3.5 h-3.5" />}
+                <span className="font-medium">{derivApi.isConnected ? 'Live' : 'Offline'}</span>
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                className="border-slate-700 text-slate-300 hover:bg-slate-800"
+                onClick={() => refreshBalance?.()}
+              >
+                <RefreshCw className="w-3.5 h-3.5 mr-1" /> Balance
+              </Button>
               <Button
                 size="sm"
                 variant={voiceEnabled ? 'default' : 'outline'}
-                className="h-7 text-[10px] gap-1"
-                onClick={() => {
-                  setVoiceEnabled(!voiceEnabled);
-                  if (!voiceEnabled) {
-                    const u = new SpeechSynthesisUtterance('Voice signals enabled');
-                    u.rate = 1.1;
-                    window.speechSynthesis?.speak(u);
-                  } else {
-                    window.speechSynthesis?.cancel();
-                  }
-                }}
+                className={`gap-1.5 ${voiceEnabled ? 'bg-emerald-600 hover:bg-emerald-700' : 'border-slate-700 text-slate-300'}`}
+                onClick={() => setVoiceEnabled(!voiceEnabled)}
               >
-                {voiceEnabled ? <Volume2 className="w-3 h-3" /> : <VolumeX className="w-3 h-3" />}
-                {voiceEnabled ? 'ON' : 'OFF'}
+                {voiceEnabled ? <Volume2 className="w-3.5 h-3.5" /> : <VolumeX className="w-3.5 h-3.5" />}
+                Voice
               </Button>
             </div>
-            {voiceEnabled && (
-              <p className="text-[9px] text-muted-foreground mt-1">🔊 Ramzfx AI will announce trade results</p>
-            )}
+            <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                variant={turboMode ? 'default' : 'outline'}
+                className={`gap-1.5 ${turboMode ? 'bg-amber-500 hover:bg-amber-600 text-black font-bold' : 'border-slate-700'}`}
+                onClick={() => setTurboMode(!turboMode)}
+                disabled={botRunning}
+              >
+                <Zap className="w-3.5 h-3.5" />
+                {turboMode ? '⚡ TURBO' : 'Turbo'}
+              </Button>
+              {botRunning && (
+                <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30 animate-pulse">
+                  RUNNING
+                </Badge>
+              )}
+            </div>
           </div>
 
-          {/* AUTO BOT PANEL */}
-          <motion.div 
-            whileHover={{ boxShadow: "0 0 20px rgba(63, 185, 80, 0.1)" }}
-            className={`bg-card border rounded-xl p-3 space-y-2 transition-all duration-300 ${botRunning ? 'border-profit glow-profit' : 'border-border'}`}
-          >
-            <div className="flex items-center justify-between">
-              <h3 className="text-xs font-semibold text-foreground flex items-center gap-1">
-                <Zap className="w-3.5 h-3.5 text-primary" /> Ramzfx Speed Bot
-              </h3>
-              <div className="flex items-center gap-2">
-                <Button
-                  size="sm"
-                  variant={turboMode ? 'default' : 'outline'}
-                  className={`h-6 text-[9px] px-2 ${turboMode ? 'bg-profit hover:bg-profit/90 text-profit-foreground animate-pulse' : ''}`}
-                  onClick={() => setTurboMode(!turboMode)}
-                  disabled={botRunning}
-                >
-                  <Zap className="w-3 h-3 mr-0.5" />
-                  {turboMode ? '⚡ TURBO' : 'Turbo'}
-                </Button>
-                {botRunning && (
-                  <motion.div animate={{ opacity: [0.4, 1, 0.4] }} transition={{ repeat: Infinity, duration: 1.5 }}>
-                    <Badge className="text-[8px] bg-profit text-profit-foreground">RUNNING</Badge>
-                  </motion.div>
-                )}
-              </div>
-            </div>
-
+          {/* Bot Configuration Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-5">
             <div>
-              <label className="text-[9px] text-muted-foreground">Market</label>
+              <label className="text-xs text-slate-400 block mb-1">Market Symbol</label>
               <Select value={botConfig.botSymbol} onValueChange={handleBotSymbolChange} disabled={botRunning}>
-                <SelectTrigger className="h-8 text-xs">
+                <SelectTrigger className="bg-slate-800 border-slate-700 text-slate-200 h-10">
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent className="max-h-60">
+                <SelectContent className="bg-slate-800 border-slate-700 max-h-60">
                   {ALL_MARKETS.map(m => (
-                    <SelectItem key={m.symbol} value={m.symbol}>
+                    <SelectItem key={m.symbol} value={m.symbol} className="text-slate-200">
                       {m.name}
                     </SelectItem>
                   ))}
@@ -1800,485 +938,303 @@ export default function TradingChart() {
               </Select>
             </div>
 
-            <Select value={botConfig.contractType} onValueChange={v => setBotConfig(p => ({ ...p, contractType: v }))} disabled={botRunning}>
-              <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
-              <SelectContent>{CONTRACT_TYPES.map(c => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}</SelectContent>
-            </Select>
+            <div>
+              <label className="text-xs text-slate-400 block mb-1">Contract Type</label>
+              <Select value={botConfig.contractType} onValueChange={v => setBotConfig(p => ({ ...p, contractType: v }))} disabled={botRunning}>
+                <SelectTrigger className="bg-slate-800 border-slate-700 text-slate-200 h-10">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="bg-slate-800 border-slate-700">
+                  {CONTRACT_TYPES.map(c => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
 
             {['DIGITMATCH','DIGITDIFF','DIGITOVER','DIGITUNDER'].includes(botConfig.contractType) && (
               <div>
-                <label className="text-[9px] text-muted-foreground">Prediction (0-9)</label>
-                <div className="grid grid-cols-5 gap-1">
+                <label className="text-xs text-slate-400 block mb-1">Prediction Digit (0-9)</label>
+                <div className="grid grid-cols-5 gap-1.5">
                   {Array.from({ length: 10 }, (_, i) => (
-                    <motion.button 
+                    <button 
                       key={i} 
                       disabled={botRunning} 
                       onClick={() => setBotConfig(p => ({ ...p, prediction: String(i) }))}
-                      whileHover={{ scale: 1.05 }}
-                      whileTap={{ scale: 0.95 }}
-                      className={`h-6 rounded text-[10px] font-mono font-bold transition-all ${
-                        botConfig.prediction === String(i) ? 'bg-primary text-primary-foreground' : 'bg-muted text-foreground hover:bg-secondary'
-                      }`}>{i}</motion.button>
+                      className={`h-9 rounded-lg text-sm font-mono font-bold transition-all ${
+                        botConfig.prediction === String(i) 
+                          ? 'bg-emerald-500 text-white' 
+                          : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                      }`}
+                    >
+                      {i}
+                    </button>
                   ))}
                 </div>
               </div>
             )}
 
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-[9px] text-muted-foreground">Stake ($)</label>
+                <label className="text-xs text-slate-400 block mb-1">Stake ($)</label>
                 <Input type="number" min="0.35" step="0.01" value={botConfig.stake}
-                  onChange={e => setBotConfig(p => ({ ...p, stake: e.target.value }))} disabled={botRunning} className="h-7 text-xs" />
+                  onChange={e => setBotConfig(p => ({ ...p, stake: e.target.value }))} disabled={botRunning}
+                  className="bg-slate-800 border-slate-700 text-slate-200 h-10" />
               </div>
               <div>
-                <label className="text-[9px] text-muted-foreground">Duration</label>
-                <div className="flex gap-1">
+                <label className="text-xs text-slate-400 block mb-1">Duration</label>
+                <div className="flex gap-2">
                   <Input type="number" min="1" value={botConfig.duration}
-                    onChange={e => setBotConfig(p => ({ ...p, duration: e.target.value }))} disabled={botRunning} className="h-7 text-xs flex-1" />
+                    onChange={e => setBotConfig(p => ({ ...p, duration: e.target.value }))} disabled={botRunning}
+                    className="bg-slate-800 border-slate-700 text-slate-200 h-10 flex-1" />
                   <Select value={botConfig.durationUnit} onValueChange={v => setBotConfig(p => ({ ...p, durationUnit: v }))} disabled={botRunning}>
-                    <SelectTrigger className="h-7 text-xs w-16"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="t">T</SelectItem>
-                      <SelectItem value="s">S</SelectItem>
-                      <SelectItem value="m">M</SelectItem>
+                    <SelectTrigger className="bg-slate-800 border-slate-700 text-slate-200 w-20 h-10">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="bg-slate-800 border-slate-700">
+                      <SelectItem value="t">Ticks</SelectItem>
+                      <SelectItem value="s">Seconds</SelectItem>
+                      <SelectItem value="m">Minutes</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
               </div>
             </div>
 
-            <div className="flex items-center justify-between">
-              <label className="text-[10px] text-foreground">Martingale</label>
-              <div className="flex items-center gap-2">
+            <div className="flex items-center justify-between bg-slate-800/50 rounded-xl p-3">
+              <div>
+                <span className="text-xs text-slate-400">Martingale</span>
+                <p className="text-[10px] text-slate-500 mt-0.5">Double on loss</p>
+              </div>
+              <div className="flex items-center gap-3">
                 {botConfig.martingale && (
                   <Input type="number" min="1.1" step="0.1" value={botConfig.multiplier}
                     onChange={e => setBotConfig(p => ({ ...p, multiplier: e.target.value }))} disabled={botRunning}
-                    className="h-6 text-[10px] w-14" />
+                    className="bg-slate-800 border-slate-700 text-slate-200 h-8 w-20 text-sm" />
                 )}
-                <button onClick={() => setBotConfig(p => ({ ...p, martingale: !p.martingale }))} disabled={botRunning}
-                  className={`w-9 h-5 rounded-full transition-colors ${botConfig.martingale ? 'bg-primary' : 'bg-muted'} relative`}>
-                  <div className={`w-4 h-4 rounded-full bg-background shadow absolute top-0.5 transition-transform ${botConfig.martingale ? 'translate-x-4' : 'translate-x-0.5'}`} />
-                </button>
+                <Switch checked={botConfig.martingale} onCheckedChange={v => setBotConfig(p => ({ ...p, martingale: v }))} disabled={botRunning} />
               </div>
             </div>
 
-            {/* ============================================ */}
-            {/* VIRTUAL HOOK SECTION - NO NOTIFICATIONS */}
-            {/* ============================================ */}
-            <div className="border-t border-border pt-2 mt-1">
+            <div className="grid grid-cols-3 gap-3">
+              <div>
+                <label className="text-xs text-slate-400 block mb-1">Stop Loss</label>
+                <Input type="number" value={botConfig.stopLoss} onChange={e => setBotConfig(p => ({ ...p, stopLoss: e.target.value }))}
+                  disabled={botRunning} className="bg-slate-800 border-slate-700 text-slate-200 h-10" />
+              </div>
+              <div>
+                <label className="text-xs text-slate-400 block mb-1">Take Profit</label>
+                <Input type="number" value={botConfig.takeProfit} onChange={e => setBotConfig(p => ({ ...p, takeProfit: e.target.value }))}
+                  disabled={botRunning} className="bg-slate-800 border-slate-700 text-slate-200 h-10" />
+              </div>
+              <div>
+                <label className="text-xs text-slate-400 block mb-1">Max Trades</label>
+                <Input type="number" value={botConfig.maxTrades} onChange={e => setBotConfig(p => ({ ...p, maxTrades: e.target.value }))}
+                  disabled={botRunning} className="bg-slate-800 border-slate-700 text-slate-200 h-10" />
+              </div>
+            </div>
+
+            {/* Virtual Hook Section */}
+            <div className="md:col-span-2 border-t border-slate-700 pt-3 mt-1">
               <div className="flex items-center justify-between mb-2">
-                <label className="text-[10px] font-semibold text-primary flex items-center gap-1">
-                  <Anchor className="w-3 h-3" /> Virtual Hook
+                <label className="text-sm font-semibold text-emerald-400 flex items-center gap-2">
+                  <Anchor className="w-4 h-4" /> Virtual Hook Strategy
                 </label>
                 <Switch checked={hookEnabled} onCheckedChange={setHookEnabled} disabled={botRunning} />
               </div>
 
               {hookEnabled && (
-                <div className="space-y-2 p-2 bg-primary/5 rounded-lg border border-primary/20">
-                  <div className="grid grid-cols-2 gap-2">
+                <div className="bg-emerald-950/20 border border-emerald-500/30 rounded-xl p-3 space-y-3">
+                  <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="text-[8px] text-muted-foreground">Required V-Losses</label>
-                      <Input
-                        type="number"
-                        min="1"
-                        max="20"
-                        value={virtualLossCount}
-                        onChange={e => setVirtualLossCount(e.target.value)}
-                        disabled={botRunning}
-                        className="h-7 text-[10px]"
-                      />
+                      <label className="text-[10px] text-slate-400">Required V-Losses</label>
+                      <Input type="number" min="1" max="20" value={virtualLossCount}
+                        onChange={e => setVirtualLossCount(e.target.value)} disabled={botRunning}
+                        className="bg-slate-800 border-slate-700 h-8 text-sm mt-1" />
                     </div>
                     <div>
-                      <label className="text-[8px] text-muted-foreground">Real Trades (max)</label>
-                      <Input
-                        type="number"
-                        min="1"
-                        max="10"
-                        value={realCount}
-                        onChange={e => setRealCount(e.target.value)}
-                        disabled={botRunning}
-                        className="h-7 text-[10px]"
-                      />
+                      <label className="text-[10px] text-slate-400">Real Trades (max)</label>
+                      <Input type="number" min="1" max="10" value={realCount}
+                        onChange={e => setRealCount(e.target.value)} disabled={botRunning}
+                        className="bg-slate-800 border-slate-700 h-8 text-sm mt-1" />
                     </div>
                   </div>
                   
-                  {/* Virtual Hook Stats Display */}
-                  <div className="grid grid-cols-3 gap-1 text-center pt-1">
-                    <div className="bg-muted/30 rounded p-1">
-                      <div className="text-[7px] text-muted-foreground">V-Win</div>
-                      <div className="font-mono text-[9px] font-bold text-profit">{vhFakeWins}</div>
+                  <div className="grid grid-cols-3 gap-2 text-center">
+                    <div className="bg-slate-800/50 rounded-lg p-1.5">
+                      <div className="text-[9px] text-slate-400">V-Win</div>
+                      <div className="font-mono text-sm font-bold text-emerald-400">{vhFakeWins}</div>
                     </div>
-                    <div className="bg-muted/30 rounded p-1">
-                      <div className="text-[7px] text-muted-foreground">V-Loss</div>
-                      <div className="font-mono text-[9px] font-bold text-loss">{vhFakeLosses}</div>
+                    <div className="bg-slate-800/50 rounded-lg p-1.5">
+                      <div className="text-[9px] text-slate-400">V-Loss</div>
+                      <div className="font-mono text-sm font-bold text-red-400">{vhFakeLosses}</div>
                     </div>
-                    <div className="bg-muted/30 rounded p-1">
-                      <div className="text-[7px] text-muted-foreground">Streak</div>
-                      <div className="font-mono text-[9px] font-bold text-warning">{vhConsecLosses}</div>
+                    <div className="bg-slate-800/50 rounded-lg p-1.5">
+                      <div className="text-[9px] text-slate-400">Streak</div>
+                      <div className="font-mono text-sm font-bold text-amber-400">{vhConsecLosses}</div>
                     </div>
-                  </div>
-                  
-                  <div className="text-[8px] text-muted-foreground text-center">
-                    🎣 Bot will wait for {virtualLossCount} consecutive virtual losses, then enter {realCount} real trade(s)
                   </div>
                   
                   {vhStatus === 'waiting' && botRunning && (
-                    <div className="bg-primary/10 border border-primary/30 rounded p-1 text-[8px] text-primary animate-pulse text-center">
+                    <div className="bg-emerald-500/10 border border-emerald-500/40 rounded-lg p-1.5 text-[10px] text-emerald-400 animate-pulse text-center">
                       🎣 Waiting for {virtualLossCount} consecutive virtual losses... ({vhConsecLosses}/{virtualLossCount})
                     </div>
                   )}
                   {vhStatus === 'confirmed' && botRunning && (
-                    <div className="bg-profit/10 border border-profit/30 rounded p-1 text-[4px] text-profit text-center animate-pulse">
+                    <div className="bg-emerald-500/20 border border-emerald-500 rounded-lg p-1.5 text-[10px] text-emerald-300 text-center font-bold">
                       ✅ Hook confirmed! Executing real trades...
                     </div>
                   )}
                 </div>
               )}
             </div>
-
-            {/* Strategy Section with Combined Mode */}
-            <div className="border-t border-border pt-2 mt-1">
-              <div className="flex items-center justify-between mb-2">
-                <label className="text-[10px] font-semibold text-warning flex items-center gap-1">
-                  <Combine className="w-3 h-3" /> Pattern/Digit/Combined Strategy
-                </label>
-                <Switch checked={strategyEnabled} onCheckedChange={setStrategyEnabled} disabled={botRunning} />
-              </div>
-
-              {strategyEnabled && (
-                <div className="space-y-2">
-                  <div className="flex gap-1">
-                    <Button
-                      size="sm"
-                      variant={strategyMode === 'pattern' ? 'default' : 'outline'}
-                      className="text-[9px] h-6 px-2 flex-1"
-                      onClick={() => setStrategyMode('pattern')}
-                      disabled={botRunning}
-                    >
-                      Pattern (E/O)
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant={strategyMode === 'digit' ? 'default' : 'outline'}
-                      className="text-[9px] h-6 px-2 flex-1"
-                      onClick={() => setStrategyMode('digit')}
-                      disabled={botRunning}
-                    >
-                      Digit Condition 
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant={strategyMode === 'combined' ? 'default' : 'outline'}
-                      className="text-[9px] h-6 px-2 flex-1"
-                      onClick={() => setStrategyMode('combined')}
-                      disabled={botRunning}
-                    >
-                      <Combine className="w-2.5 h-2.5 mr-0.5" /> Combined
-                    </Button>
-                  </div>
-
-                  {strategyMode === 'pattern' ? (
-                    <div>
-                      <label className="text-[8px] text-muted-foreground">Pattern (E=Even, O=Odd)</label>
-                      <Textarea
-                        placeholder="e.g., EEEOE or OOEEO"
-                        value={patternInput}
-                        onChange={e => setPatternInput(e.target.value.toUpperCase().replace(/[^EO]/g, ''))}
-                        disabled={botRunning}
-                        className="h-12 text-[10px] font-mono min-h-0 mt-1"
-                      />
-                      <div className={`text-[9px] font-mono mt-1 ${patternValid ? 'text-profit' : 'text-loss'}`}>
-                        {cleanPattern.length === 0 ? 'Enter pattern (min 2 characters)' :
-                          patternValid ? `✓ Pattern: ${cleanPattern}` : `✗ Need at least 2 characters (E/O)`}
-                      </div>
-                    </div>
-                  ) : strategyMode === 'digit' ? (
-                    <div className="grid grid-cols-3 gap-1">
-                      <div>
-                        <label className="text-[8px] text-muted-foreground">If last </label>
-                        <Input type="number" min="1" max="50" value={digitWindow}
-                          onChange={e => setDigitWindow(e.target.value)} disabled={botRunning}
-                          className="h-7 text-[10px]" />
-                      </div>
-                      <div>
-                        <label className="text-[8px] text-muted-foreground">ticks are </label>
-                        <Select value={digitCondition} onValueChange={setDigitCondition} disabled={botRunning}>
-                          <SelectTrigger className="h-7 text-[10px]"><SelectValue /></SelectTrigger>
-                          <SelectContent>
-                            {['==', '!=', '>', '<', '>=', '<='].map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div>
-                        <label className="text-[8px] text-muted-foreground">Digit</label>
-                        <Input type="number" min="0" max="9" value={digitCompare}
-                          onChange={e => setDigitCompare(e.target.value)} disabled={botRunning}
-                          className="h-7 text-[10px]" />
-                      </div>
-                    </div>
-                  ) : (
-                    // Combined Strategy UI
-                    <div className="space-y-2">
-                      <div>
-                        <label className="text-[8px] text-muted-foreground">Patterns (comma separated)</label>
-                        <Textarea
-                          placeholder="e.g., 11O, 99U, 112, 232, EEEOE, OOEEO, 1O, 2E, 5U"
-                          value={combinedPatterns}
-                          onChange={e => setCombinedPatterns(e.target.value.toUpperCase())}
-                          disabled={botRunning}
-                          className="h-20 text-[10px] font-mono min-h-0 mt-1"
-                        />
-                        <div className="text-[8px] text-muted-foreground mt-1">
-                          Formats: digits(0-9), E/O (Even/Odd), O/U (Over/Under). Example: "11O" means last two digits are 1 and 1, last is Over.
-                        </div>
-                        {parsedPatterns.length > 0 && (
-                          <div className="mt-1 flex flex-wrap gap-1">
-                            {parsedPatterns.map((p, idx) => (
-                              <Badge key={idx} variant="outline" className="text-[8px] font-mono">
-                                {combinedPatterns.split(',')[idx].trim()}
-                              </Badge>
-                            ))}
-                          </div>
-                        )}
-                        {combinedPatterns.length > 0 && parsedPatterns.length === 0 && (
-                          <div className="text-[8px] text-loss mt-1">Invalid patterns. Use digits(0-9), E/O, O/U only.</div>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <label className="text-[8px] text-muted-foreground">Match Logic:</label>
-                        <Button
-                          size="sm"
-                          variant={!useOrLogic ? 'default' : 'outline'}
-                          className="text-[8px] h-5 px-2"
-                          onClick={() => setUseOrLogic(false)}
-                          disabled={botRunning}
-                        >
-                          AND (All)
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant={useOrLogic ? 'default' : 'outline'}
-                          className="text-[8px] h-5 px-2"
-                          onClick={() => setUseOrLogic(true)}
-                          disabled={botRunning}
-                        >
-                          OR (Any)
-                        </Button>
-                      </div>
-                      <div className="text-[8px] text-muted-foreground text-center py-1">
-                        {useOrLogic ? 'Any pattern match triggers trade' : 'All patterns must match to trade'}
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="text-[8px] text-muted-foreground text-center py-1">
-                    Bot will wait for condition before each trade
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <div className="grid grid-cols-3 gap-1.5">
-              <div>
-                <label className="text-[8px] text-muted-foreground">Stop Loss</label>
-                <Input type="number" value={botConfig.stopLoss} onChange={e => setBotConfig(p => ({ ...p, stopLoss: e.target.value }))}
-                  disabled={botRunning} className="h-7 text-xs" />
-              </div>
-              <div>
-                <label className="text-[8px] text-muted-foreground">Take Profit</label>
-                <Input type="number" value={botConfig.takeProfit} onChange={e => setBotConfig(p => ({ ...p, takeProfit: e.target.value }))}
-                  disabled={botRunning} className="h-7 text-xs" />
-              </div>
-              <div>
-                <label className="text-[8px] text-muted-foreground">Max Trades</label>
-                <Input type="number" value={botConfig.maxTrades} onChange={e => setBotConfig(p => ({ ...p, maxTrades: e.target.value }))}
-                  disabled={botRunning} className="h-7 text-xs" />
-              </div>
-            </div>
-
-            {botRunning && (
-              <motion.div 
-                initial={{ opacity: 0, y: -10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="grid grid-cols-3 gap-1 text-center"
-              >
-                <div className="bg-muted/30 rounded p-1">
-                  <div className="text-[7px] text-muted-foreground">Stake</div>
-                  <div className="font-mono text-[10px] font-bold text-foreground">${botStats.currentStake.toFixed(2)}</div>
-                </div>
-                <div className="bg-muted/30 rounded p-1">
-                  <div className="text-[7px] text-muted-foreground">Streak</div>
-                  <div className="font-mono text-[10px] font-bold text-loss">{botStats.consecutiveLosses}L</div>
-                </div>
-                <div className={`${botStats.pnl >= 0 ? 'bg-profit/10' : 'bg-loss/10'} rounded p-1`}>
-                  <div className="text-[7px] text-muted-foreground">P/L</div>
-                  <div className={`font-mono text-[10px] font-bold ${botStats.pnl >= 0 ? 'text-profit' : 'text-loss'}`}>
-                    {botStats.pnl >= 0 ? '+' : ''}{botStats.pnl.toFixed(2)}
-                  </div>
-                </div>
-              </motion.div>
-            )}
-
-            <div className="flex gap-2">
-              {!botRunning ? (
-                <Button onClick={startBot} disabled={!isAuthorized} className="flex-1 h-10 text-xs font-bold bg-profit hover:bg-profit/90 text-profit-foreground">
-                  <Play className="w-4 h-4 mr-1" /> Start Bot
-                </Button>
-              ) : (
-                <>
-                  <Button onClick={togglePauseBot} variant="outline" className="flex-1 h-10 text-xs">
-                    <Pause className="w-3.5 h-3.5 mr-1" /> {botPaused ? 'Resume' : 'Pause'}
-                  </Button>
-                  <Button onClick={stopBot} variant="destructive" className="flex-1 h-10 text-xs">
-                    <StopCircle className="w-3.5 h-3.5 mr-1" /> Stop
-                  </Button>
-                </>
-              )}
-            </div>
-          </motion.div>
-
-          {/* Bot Progress */}
-          <div className="bg-card border border-border rounded-xl p-3 space-y-2">
-            <div className="flex items-center justify-between">
-              <h3 className="text-xs font-semibold text-foreground flex items-center gap-1">
-                <Trophy className="w-3.5 h-3.5 text-primary" /> Trade Results 
-              </h3>
-              {tradeHistory.length > 0 && (
-                <Button variant="ghost" size="sm" className="h-6 text-[9px] text-muted-foreground hover:text-loss"
-                  onClick={() => { setTradeHistory([]); setBotStats({ trades: 0, wins: 0, losses: 0, pnl: 0, currentStake: 0, consecutiveLosses: 0 }); }}>
-                  Clear
-                </Button>
-              )}
-            </div>
-            <div className="grid grid-cols-4 gap-1.5">
-              <div className="bg-muted/30 rounded-lg p-1.5 text-center">
-                <div className="text-[8px] text-muted-foreground">Trades</div>
-                <div className="font-mono text-sm font-bold text-foreground">{totalTrades}</div>
-              </div>
-              <div className="bg-profit/10 rounded-lg p-1.5 text-center">
-                <div className="text-[8px] text-profit">Wins</div>
-                <div className="font-mono text-sm font-bold text-profit">{winsCount}</div>
-              </div>
-              <div className="bg-loss/10 rounded-lg p-1.5 text-center">
-                <div className="text-[8px] text-loss">Losses</div>
-                <div className="font-mono text-sm font-bold text-loss">{lossesCount}</div>
-              </div>
-              <div className={`${totalProfit >= 0 ? 'bg-profit/10' : 'bg-loss/10'} rounded-lg p-1.5 text-center`}>
-                <div className="text-[8px] text-muted-foreground">P/L</div>
-                <div className={`font-mono text-sm font-bold ${totalProfit >= 0 ? 'text-profit' : 'text-loss'}`}>
-                  {totalProfit >= 0 ? '+' : ''}{totalProfit.toFixed(2)}
-                </div>
-              </div>
-            </div>
-            {totalTrades > 0 && (
-              <div>
-                <div className="flex justify-between text-[9px] text-muted-foreground mb-0.5">
-                  <span>Win Rate</span>
-                  <span className="font-mono font-bold">{winRate.toFixed(1)}%</span>
-                </div>
-                <div className="h-2 bg-muted rounded-full overflow-hidden">
-                  <div className="h-full bg-profit rounded-full" style={{ width: `${winRate}%` }} />
-                </div>
-              </div>
-            )}
-
-            {/* Trade History - All trades visible, no limit */}
-            {tradeHistory.length > 0 && (
-              <div className="max-h-60 overflow-auto space-y-1">
-                {tradeHistory.map(t => {
-                  const outcomeSymbol = getOutcomeSymbol(t);
-                  const outcomeColor = t.status === 'won' ? 'text-profit' : 'text-loss';
-                  
-                  let badgeColor = '';
-                  if (outcomeSymbol === 'R' || outcomeSymbol === 'U') badgeColor = 'border-profit text-profit';
-                  else if (outcomeSymbol === 'F' || outcomeSymbol === 'O') badgeColor = 'border-loss text-loss';
-                  else if (outcomeSymbol === 'S') badgeColor = 'border-primary text-primary';
-                  else if (outcomeSymbol === 'D') badgeColor = 'border-[#D29922] text-[#D29922]';
-                  else if (outcomeSymbol === 'E') badgeColor = 'border-[#3FB950] text-[#3FB950]';
-                  
-                  // Enhanced styling for virtual trades
-                  const isVirtualTrade = t.isVirtual === true;
-                  const virtualStatusClass = isVirtualTrade
-                    ? t.status === 'won'
-                      ? 'bg-gradient-to-r from-green-950/40 to-emerald-950/30 border-green-500/50'
-                      : 'bg-gradient-to-r from-red-950/40 to-rose-950/30 border-red-500/50'
-                    : '';
-                  
-                  return (
-                    <motion.div 
-                      key={t.id} 
-                      initial={{ opacity: 0, height: 0 }}
-                      animate={{ opacity: 1, height: "auto" }}
-                      className={`flex items-center justify-between text-[9px] p-1.5 rounded-lg border ${
-                        t.status === 'open' ? 'border-primary/30 bg-primary/5' :
-                        t.status === 'won' ? 'border-profit/30 bg-profit/5' :
-                        'border-loss/30 bg-loss/5'
-                      } ${virtualStatusClass} ${isVirtualTrade ? 'border-dashed' : ''}`}
-                    >
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className={`font-bold ${t.status === 'won' ? 'text-profit' : t.status === 'lost' ? 'text-loss' : 'text-primary'}`}>
-                          {t.status === 'open' ? '⏳' : t.status === 'won' ? '✅' : '❌'}
-                        </span>
-                        {isVirtualTrade && (
-                          <Badge variant="outline" className="text-[6px] px-1 py-0 bg-purple-500/30 text-purple-400 border-purple-500/50">
-                            VIRTUAL
-                          </Badge>
-                        )}
-                        <span className="font-mono text-muted-foreground">{t.type}</span>
-                        {!isVirtualTrade && t.stake > 0 && (
-                          <span className="text-muted-foreground">${t.stake.toFixed(2)}</span>
-                        )}
-                        {isVirtualTrade && (
-                          <span className="text-purple-400/70 text-[8px] font-mono">
-                            {t.virtualLossCount !== undefined && t.virtualRequired !== undefined 
-                              ? `(${t.virtualLossCount}/${t.virtualRequired})` 
-                              : '(virtual)'}
-                          </span>
-                        )}
-                        {t.resultDigit !== undefined && (
-                          <Badge variant="outline" className={`text-[8px] px-1 ${t.status === 'won' ? 'border-profit text-profit' : 'border-loss text-loss'}`}>
-                            {t.resultDigit}
-                          </Badge>
-                        )}
-                        {outcomeSymbol && t.status !== 'open' && (
-                          <Badge variant="outline" className={`text-[8px] px-1 font-mono ${badgeColor}`}>
-                            {outcomeSymbol}
-                          </Badge>
-                        )}
-                      </div>
-                      <span className={`font-mono font-bold ${isVirtualTrade ? (t.status === 'won' ? 'text-green-400' : 'text-red-400') : (t.profit >= 0 ? 'text-profit' : 'text-loss')}`}>
-                        {t.status === 'open' ? '...' : isVirtualTrade ? (t.status === 'won' ? 'WIN' : 'LOSS') : `${t.profit >= 0 ? '+' : ''}$${t.profit.toFixed(2)}`}
-                      </span>
-                    </motion.div>
-                  );
-                })}
-              </div>
-            )}
           </div>
 
-          {/* Technical Status */}
-          <div className="bg-card border border-border rounded-xl p-3 space-y-2">
-            <h3 className="text-xs font-semibold text-foreground flex items-center gap-1">
-              <ShieldAlert className="w-3.5 h-3.5 text-primary" /> Technical Status
-            </h3>
-            <div className="space-y-1.5">
-              <div className="flex items-center justify-between text-[10px]">
-                <span className="text-muted-foreground">Connection</span>
-                <span className={`font-mono font-bold ${derivApi.isConnected ? 'text-profit' : 'text-loss'}`}>
-                  {derivApi.isConnected ? '🟢 Online' : '🔴 Offline'}
-                </span>
+          {/* Running Stats */}
+          {botRunning && (
+            <div className="grid grid-cols-3 gap-3 mb-4 p-3 bg-slate-800/40 rounded-xl">
+              <div className="text-center">
+                <div className="text-[9px] text-slate-400">Current Stake</div>
+                <div className="font-mono text-lg font-bold text-emerald-400">${botStats.currentStake.toFixed(2)}</div>
               </div>
-              <div className="flex items-center justify-between text-[10px]">
-                <span className="text-muted-foreground">Market</span>
-                <span className="font-mono font-bold text-foreground">{symbol}</span>
+              <div className="text-center">
+                <div className="text-[9px] text-slate-400">Loss Streak</div>
+                <div className="font-mono text-lg font-bold text-red-400">{botStats.consecutiveLosses}</div>
               </div>
-              <div className="flex items-center justify-between text-[10px]">
-                <span className="text-muted-foreground">Bot Status</span>
-                <span className={`font-mono font-bold ${botRunning ? 'text-profit' : 'text-muted-foreground'}`}>
-                  {botRunning ? (botPaused ? '⏸ Paused' : '▶ Running') : '⏹ Stopped'}
-                </span>
+              <div className={`text-center ${botStats.pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                <div className="text-[9px] text-slate-400">P/L</div>
+                <div className="font-mono text-lg font-bold">{botStats.pnl >= 0 ? '+' : ''}{botStats.pnl.toFixed(2)}</div>
               </div>
             </div>
+          )}
+
+          {/* Control Buttons */}
+          <div className="flex gap-3 mt-2">
+            {!botRunning ? (
+              <Button onClick={startBot} disabled={!isAuthorized} className="flex-1 h-12 text-base font-bold bg-emerald-600 hover:bg-emerald-700 text-white">
+                <Play className="w-5 h-5 mr-2" /> Start Bot
+              </Button>
+            ) : (
+              <>
+                <Button onClick={togglePauseBot} variant="outline" className="flex-1 h-12 text-base border-slate-600 text-slate-300 hover:bg-slate-800">
+                  <Pause className="w-4 h-4 mr-2" /> {botPaused ? 'Resume' : 'Pause'}
+                </Button>
+                <Button onClick={stopBot} variant="destructive" className="flex-1 h-12 text-base">
+                  <StopCircle className="w-5 h-5 mr-2" /> Stop
+                </Button>
+              </>
+            )}
+          </div>
+        </motion.div>
+
+        {/* Trade History Panel */}
+        <motion.div 
+          variants={fadeInUpVariants}
+          initial="hidden"
+          animate={pageLoaded ? "visible" : "hidden"}
+          transition={{ delay: 0.2 }}
+          className="mt-6 bg-slate-900/60 backdrop-blur-sm border border-slate-700 rounded-xl p-4"
+        >
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-semibold text-slate-200 flex items-center gap-2">
+              <Trophy className="w-4 h-4 text-emerald-400" /> Trade History
+            </h3>
+            {tradeHistory.length > 0 && (
+              <Button variant="ghost" size="sm" className="h-6 text-[10px] text-slate-400 hover:text-red-400"
+                onClick={() => { setTradeHistory([]); setBotStats({ trades: 0, wins: 0, losses: 0, pnl: 0, currentStake: 0, consecutiveLosses: 0 }); }}>
+                Clear
+              </Button>
+            )}
+          </div>
+          
+          <div className="grid grid-cols-4 gap-2 mb-3">
+            <div className="bg-slate-800/50 rounded-lg p-2 text-center">
+              <div className="text-[9px] text-slate-400">Trades</div>
+              <div className="font-mono text-base font-bold">{totalTrades}</div>
+            </div>
+            <div className="bg-emerald-500/10 rounded-lg p-2 text-center">
+              <div className="text-[9px] text-emerald-400">Wins</div>
+              <div className="font-mono text-base font-bold text-emerald-400">{winsCount}</div>
+            </div>
+            <div className="bg-red-500/10 rounded-lg p-2 text-center">
+              <div className="text-[9px] text-red-400">Losses</div>
+              <div className="font-mono text-base font-bold text-red-400">{lossesCount}</div>
+            </div>
+            <div className={`${totalProfit >= 0 ? 'bg-emerald-500/10' : 'bg-red-500/10'} rounded-lg p-2 text-center`}>
+              <div className="text-[9px] text-slate-400">P/L</div>
+              <div className={`font-mono text-base font-bold ${totalProfit >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                {totalProfit >= 0 ? '+' : ''}{totalProfit.toFixed(2)}
+              </div>
+            </div>
+          </div>
+          
+          {totalTrades > 0 && (
+            <div className="mb-3">
+              <div className="flex justify-between text-[9px] text-slate-400 mb-0.5">
+                <span>Win Rate</span>
+                <span className="font-mono">{winRate.toFixed(1)}%</span>
+              </div>
+              <div className="h-1.5 bg-slate-700 rounded-full overflow-hidden">
+                <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${winRate}%` }} />
+              </div>
+            </div>
+          )}
+
+          <div className="max-h-64 overflow-y-auto space-y-1.5 pr-1">
+            <AnimatePresence>
+              {tradeHistory.map(t => {
+                const outcomeSymbol = getOutcomeSymbol(t);
+                let badgeColor = '';
+                if (outcomeSymbol === 'R' || outcomeSymbol === 'U') badgeColor = 'border-emerald-500 text-emerald-400';
+                else if (outcomeSymbol === 'F' || outcomeSymbol === 'O') badgeColor = 'border-red-500 text-red-400';
+                else if (outcomeSymbol === 'S') badgeColor = 'border-blue-500 text-blue-400';
+                else if (outcomeSymbol === 'D') badgeColor = 'border-amber-500 text-amber-400';
+                else if (outcomeSymbol === 'E') badgeColor = 'border-emerald-500 text-emerald-400';
+                
+                return (
+                  <motion.div 
+                    key={t.id} 
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: "auto" }}
+                    exit={{ opacity: 0, height: 0 }}
+                    className={`flex items-center justify-between text-xs p-2 rounded-lg border ${
+                      t.status === 'open' ? 'border-blue-500/30 bg-blue-500/5' :
+                      t.status === 'won' ? 'border-emerald-500/30 bg-emerald-500/5' :
+                      'border-red-500/30 bg-red-500/5'
+                    } ${t.isVirtual ? 'border-dashed opacity-80' : ''}`}
+                  >
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className={`font-bold ${t.status === 'won' ? 'text-emerald-400' : t.status === 'lost' ? 'text-red-400' : 'text-blue-400'}`}>
+                        {t.status === 'open' ? '⏳' : t.status === 'won' ? '✅' : '❌'}
+                      </span>
+                      {t.isVirtual && (
+                        <Badge variant="outline" className="text-[8px] px-1 py-0 bg-purple-500/20 text-purple-300 border-purple-500/30">
+                          VIRTUAL
+                        </Badge>
+                      )}
+                      <span className="font-mono text-slate-300">{t.type}</span>
+                      {!t.isVirtual && t.stake > 0 && <span className="text-slate-400">${t.stake.toFixed(2)}</span>}
+                      {t.resultDigit !== undefined && (
+                        <Badge variant="outline" className={`text-[9px] px-1.5 ${t.status === 'won' ? 'border-emerald-500 text-emerald-400' : 'border-red-500 text-red-400'}`}>
+                          {t.resultDigit}
+                        </Badge>
+                      )}
+                      {outcomeSymbol && t.status !== 'open' && (
+                        <Badge variant="outline" className={`text-[9px] px-1.5 font-mono ${badgeColor}`}>
+                          {outcomeSymbol}
+                        </Badge>
+                      )}
+                    </div>
+                    <span className={`font-mono font-bold ${t.isVirtual ? (t.status === 'won' ? 'text-emerald-400' : 'text-red-400') : (t.profit >= 0 ? 'text-emerald-400' : 'text-red-400')}`}>
+                      {t.status === 'open' ? '...' : t.isVirtual ? (t.status === 'won' ? 'WIN' : 'LOSS') : `${t.profit >= 0 ? '+' : ''}$${t.profit.toFixed(2)}`}
+                    </span>
+                  </motion.div>
+                );
+              })}
+            </AnimatePresence>
+            {tradeHistory.length === 0 && (
+              <div className="text-center py-8 text-slate-500 text-sm">
+                No trades yet. Start the bot to see results.
+              </div>
+            )}
           </div>
         </motion.div>
       </div>
