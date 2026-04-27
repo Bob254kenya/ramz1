@@ -19,8 +19,8 @@ export default defineConfig(({ mode }) => ({
     VitePWA({
       registerType: "autoUpdate",
       manifest: {
-        name: "MILLIEFX TRADING APP",
-        short_name: "MILLIEFX",
+        name: "RAMZFX TRADING APP",
+        short_name: "RAMZFX",
         theme_color: "#171ad5",
         background_color: "#f0f1ff",
         display: "standalone",
