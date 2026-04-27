@@ -72,7 +72,7 @@ interface LogEntry {
 }
 
 // ============================================
-// TP/SL NOTIFICATION POPUP (Compact)
+// TP/SL NOTIFICATION POPUP
 // ============================================
 
 const showTPNotification = (type: 'tp' | 'sl', message: string, amount?: number) => {
@@ -203,7 +203,6 @@ function checkCombinedPattern(digits: number[], patternStr: string): boolean {
       else if (patternChar === 'O') { if (!(digit > 4)) { matched = false; break; } }
       else if (patternChar === 'E') { if (!isEven) { matched = false; break; } }
       else if (patternChar >= '0' && patternChar <= '9') { if (digit !== parseInt(patternChar)) { matched = false; break; } }
-      else if (patternChar === 'O') { if (isEven) { matched = false; break; } }
       else { matched = false; break; }
     }
     if (matched) return true;
@@ -789,261 +788,690 @@ export default function RamzfxSpeedBot() {
     <>
       <TPSLNotificationPopup />
       
-      <div className="h-screen overflow-hidden bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 p-3 flex flex-col">
-        <div className="flex flex-col h-full gap-2 max-w-full">
+      <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 p-4 md:p-6">
+        <div className="max-w-7xl mx-auto">
           
-          {/* Compact Header */}
-          <div className="flex items-center justify-between gap-3 px-3 py-2 bg-white/5 backdrop-blur-xl rounded-xl border border-white/10">
-            <div className="flex items-center gap-2">
-              <div className="p-1.5 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-lg">
-                <Sparkles className="w-4 h-4 text-white" />
+          {/* Header */}
+          <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 mb-6">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl">
+                <Sparkles className="w-5 h-5 md:w-6 md:h-6 text-white" />
               </div>
               <div>
-                <h1 className="text-sm font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">Ramzfx Speed Bot</h1>
-                <p className="text-[8px] text-slate-400">Dual Market Trading</p>
+                <h1 className="text-xl md:text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">Ramzfx Speed Bot</h1>
+                <p className="text-xs text-slate-400">Dual Market Trading System</p>
               </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className={`flex items-center gap-1 px-2 py-1 rounded-full text-[8px] font-medium ${derivApi.isConnected ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'}`}>
-                {derivApi.isConnected ? <Wifi className="w-2.5 h-2.5" /> : <WifiOff className="w-2.5 h-2.5" />}
-                <span>{derivApi.isConnected ? 'Online' : 'Offline'}</span>
-              </div>
-              <Badge className={`${status.color} text-[8px] px-2 py-0.5 bg-white/10`}>{status.icon} {status.label}</Badge>
-              {isRunning && <Badge variant="outline" className="text-[8px] text-amber-400 animate-pulse">P/L: ${netProfit.toFixed(2)}</Badge>}
-            </div>
-          </div>
-
-          {/* Dual Markets Row - Compact */}
-          <div className="grid grid-cols-2 gap-3">
-            {/* Market 1 */}
-            <div className="bg-gradient-to-br from-slate-900/90 to-slate-900/50 backdrop-blur-sm border border-blue-500/30 rounded-xl p-2">
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center gap-1.5">
-                  <div className="w-6 h-6 rounded-lg bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center">
-                    <Home className="w-3 h-3 text-white" />
-                  </div>
-                  <div>
-                    <h3 className="text-[10px] font-bold text-blue-400">PRIMARY</h3>
-                    <p className="text-[6px] text-slate-400">Main Channel</p>
-                  </div>
-                </div>
-                <Switch checked={m1Enabled} onCheckedChange={setM1Enabled} disabled={isRunning} className="scale-75 data-[state=checked]:bg-blue-500" />
-              </div>
-              
-              <div className="grid grid-cols-2 gap-1.5 mb-1.5">
-                <Select value={m1Symbol} onValueChange={setM1Symbol} disabled={isRunning}>
-                  <SelectTrigger className="h-6 text-[8px] bg-slate-800/50"><SelectValue /></SelectTrigger>
-                  <SelectContent>{ALL_MARKETS.map(m => <SelectItem key={m.symbol} value={m.symbol} className="text-[10px]">{m.name}</SelectItem>)}</SelectContent>
-                </Select>
-                <Select value={m1Contract} onValueChange={setM1Contract} disabled={isRunning}>
-                  <SelectTrigger className="h-6 text-[8px] bg-slate-800/50"><SelectValue /></SelectTrigger>
-                  <SelectContent>{CONTRACT_TYPES.map(c => <SelectItem key={c} value={c} className="text-[10px]">{c}</SelectItem>)}</SelectContent>
-                </Select>
-              </div>
-              
-              {needsBarrier(m1Contract) && (
-                <Input type="number" min="0" max="9" value={m1Barrier} onChange={e => setM1Barrier(e.target.value)} className="h-6 text-[8px] bg-slate-800/50 mb-1.5" disabled={isRunning} placeholder="Barrier" />
-              )}
-              
-              <button onClick={() => setExpandedM1(!expandedM1)} className="w-full text-[8px] text-slate-400 hover:text-blue-400 flex items-center justify-center gap-1 py-1">
-                {expandedM1 ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-                {expandedM1 ? 'Less Options' : 'More Options'}
-              </button>
-              
-              {expandedM1 && (
-                <div className="space-y-1.5 mt-1.5 pt-1.5 border-t border-blue-500/20">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[8px] text-slate-300">Virtual Hook</span>
-                    <Switch checked={m1HookEnabled} onCheckedChange={setM1HookEnabled} disabled={isRunning} className="scale-75" />
-                  </div>
-                  {m1HookEnabled && (
-                    <div className="grid grid-cols-2 gap-1.5">
-                      <Input type="number" placeholder="Losses req" value={m1VirtualLossCount} onChange={e => setM1VirtualLossCount(e.target.value)} className="h-6 text-[8px]" />
-                      <Input type="number" placeholder="Real trades" value={m1RealCount} onChange={e => setM1RealCount(e.target.value)} className="h-6 text-[8px]" />
-                    </div>
-                  )}
-                  
-                  <div className="flex items-center justify-between">
-                    <span className="text-[8px] text-slate-300">Combined Strat</span>
-                    <Switch checked={m1CombinedEnabled} onCheckedChange={setM1CombinedEnabled} disabled={isRunning} className="scale-75" />
-                  </div>
-                  {m1CombinedEnabled && (
-                    <Textarea placeholder="Patterns: 1,5,11,112" value={m1CombinedPatterns} onChange={e => setM1CombinedPatterns(e.target.value)} className="h-12 text-[8px] font-mono" />
-                  )}
-                  
-                  <div className="flex items-center justify-between">
-                    <span className="text-[8px] text-slate-300">Pattern Strat</span>
-                    <Switch checked={m1StrategyEnabled} onCheckedChange={setM1StrategyEnabled} disabled={isRunning} className="scale-75" />
-                  </div>
-                  {m1StrategyEnabled && (
-                    <div className="flex gap-1">
-                      <Button size="sm" variant={m1StrategyMode === 'pattern' ? 'default' : 'outline'} className="h-5 text-[8px] px-2 flex-1" onClick={() => setM1StrategyMode('pattern')}>Pattern</Button>
-                      <Button size="sm" variant={m1StrategyMode === 'digit' ? 'default' : 'outline'} className="h-5 text-[8px] px-2 flex-1" onClick={() => setM1StrategyMode('digit')}>Digit</Button>
-                    </div>
-                  )}
-                </div>
-              )}
             </div>
             
-            {/* Market 2 */}
-            <div className="bg-gradient-to-br from-slate-900/90 to-slate-900/50 backdrop-blur-sm border border-purple-500/30 rounded-xl p-2">
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center gap-1.5">
-                  <div className="w-6 h-6 rounded-lg bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
-                    <RefreshCw className="w-3 h-3 text-white" />
-                  </div>
-                  <div>
-                    <h3 className="text-[10px] font-bold text-purple-400">RECOVERY</h3>
-                    <p className="text-[6px] text-slate-400">Loss Recovery</p>
-                  </div>
-                </div>
-                <Switch checked={m2Enabled} onCheckedChange={setM2Enabled} disabled={isRunning} className="scale-75 data-[state=checked]:bg-purple-500" />
+            <div className="flex items-center gap-3">
+              <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium ${derivApi.isConnected ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'}`}>
+                {derivApi.isConnected ? <Wifi className="w-3.5 h-3.5" /> : <WifiOff className="w-3.5 h-3.5" />}
+                <span>{derivApi.isConnected ? 'Connected' : 'Disconnected'}</span>
               </div>
-              
-              <div className="grid grid-cols-2 gap-1.5 mb-1.5">
-                <Select value={m2Symbol} onValueChange={setM2Symbol} disabled={isRunning}>
-                  <SelectTrigger className="h-6 text-[8px] bg-slate-800/50"><SelectValue /></SelectTrigger>
-                  <SelectContent>{ALL_MARKETS.map(m => <SelectItem key={m.symbol} value={m.symbol} className="text-[10px]">{m.name}</SelectItem>)}</SelectContent>
-                </Select>
-                <Select value={m2Contract} onValueChange={setM2Contract} disabled={isRunning}>
-                  <SelectTrigger className="h-6 text-[8px] bg-slate-800/50"><SelectValue /></SelectTrigger>
-                  <SelectContent>{CONTRACT_TYPES.map(c => <SelectItem key={c} value={c} className="text-[10px]">{c}</SelectItem>)}</SelectContent>
-                </Select>
-              </div>
-              
-              {needsBarrier(m2Contract) && (
-                <Input type="number" min="0" max="9" value={m2Barrier} onChange={e => setM2Barrier(e.target.value)} className="h-6 text-[8px] bg-slate-800/50 mb-1.5" disabled={isRunning} placeholder="Barrier" />
-              )}
-              
-              <button onClick={() => setExpandedM2(!expandedM2)} className="w-full text-[8px] text-slate-400 hover:text-purple-400 flex items-center justify-center gap-1 py-1">
-                {expandedM2 ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-                {expandedM2 ? 'Less Options' : 'More Options'}
-              </button>
-              
-              {expandedM2 && (
-                <div className="space-y-1.5 mt-1.5 pt-1.5 border-t border-purple-500/20">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[8px] text-slate-300">Virtual Hook</span>
-                    <Switch checked={m2HookEnabled} onCheckedChange={setM2HookEnabled} disabled={isRunning} className="scale-75" />
-                  </div>
-                  {m2HookEnabled && (
-                    <div className="grid grid-cols-2 gap-1.5">
-                      <Input type="number" placeholder="Losses req" value={m2VirtualLossCount} onChange={e => setM2VirtualLossCount(e.target.value)} className="h-6 text-[8px]" />
-                      <Input type="number" placeholder="Real trades" value={m2RealCount} onChange={e => setM2RealCount(e.target.value)} className="h-6 text-[8px]" />
-                    </div>
-                  )}
-                  
-                  <div className="flex items-center justify-between">
-                    <span className="text-[8px] text-slate-300">Combined Strat</span>
-                    <Switch checked={m2CombinedEnabled} onCheckedChange={setM2CombinedEnabled} disabled={isRunning} className="scale-75" />
-                  </div>
-                  {m2CombinedEnabled && (
-                    <Textarea placeholder="Patterns: 1,5,11,112" value={m2CombinedPatterns} onChange={e => setM2CombinedPatterns(e.target.value)} className="h-12 text-[8px] font-mono" />
-                  )}
-                  
-                  <div className="flex items-center justify-between">
-                    <span className="text-[8px] text-slate-300">Pattern Strat</span>
-                    <Switch checked={m2StrategyEnabled} onCheckedChange={setM2StrategyEnabled} disabled={isRunning} className="scale-75" />
-                  </div>
-                  {m2StrategyEnabled && (
-                    <div className="flex gap-1">
-                      <Button size="sm" variant={m2StrategyMode === 'pattern' ? 'default' : 'outline'} className="h-5 text-[8px] px-2 flex-1" onClick={() => setM2StrategyMode('pattern')}>Pattern</Button>
-                      <Button size="sm" variant={m2StrategyMode === 'digit' ? 'default' : 'outline'} className="h-5 text-[8px] px-2 flex-1" onClick={() => setM2StrategyMode('digit')}>Digit</Button>
-                    </div>
-                  )}
-                </div>
+              <Badge className={`${status.color} text-xs px-3 py-1 bg-white/10`}>{status.icon} {status.label}</Badge>
+              {isRunning && (
+                <Badge variant="outline" className="text-xs text-amber-400 animate-pulse">
+                  P/L: ${netProfit.toFixed(2)}
+                </Badge>
               )}
             </div>
           </div>
 
-          {/* Risk Management - Compact */}
-          <div className="bg-gradient-to-br from-slate-900/90 to-slate-900/50 backdrop-blur-sm border border-amber-500/30 rounded-xl p-2">
-            <h3 className="text-[9px] font-semibold flex items-center gap-1 mb-1 text-amber-400"><Shield className="w-3 h-3" /> Risk</h3>
-            <div className="grid grid-cols-4 gap-1.5 mb-1.5">
-              <div className="bg-slate-800/30 rounded-lg p-1 text-center">
-                <div className="text-[6px] text-slate-400">Stake</div>
-                <Input type="number" min="0.35" step="0.01" value={stake} onChange={e => setStake(e.target.value)} disabled={isRunning} className="h-5 text-[8px] p-0 text-center" />
+          {/* Dual Markets Grid */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+            
+            {/* Market 1 - Primary */}
+            <div className="bg-gradient-to-br from-slate-900/90 to-slate-900/50 backdrop-blur-sm border border-blue-500/30 rounded-xl p-4">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center">
+                    <Home className="w-5 h-5 text-white" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-blue-400">PRIMARY MARKET (M1)</h3>
+                    <p className="text-xs text-slate-400">Main Trading Channel</p>
+                  </div>
+                </div>
+                <Switch checked={m1Enabled} onCheckedChange={setM1Enabled} disabled={isRunning} />
               </div>
-              <div className="bg-slate-800/30 rounded-lg p-1 text-center">
-                <div className="text-[6px] text-slate-400">TP</div>
-                <Input type="number" value={takeProfit} onChange={e => setTakeProfit(e.target.value)} disabled={isRunning} className="h-5 text-[8px] p-0 text-center" />
-              </div>
-              <div className="bg-slate-800/30 rounded-lg p-1 text-center">
-                <div className="text-[6px] text-slate-400">SL</div>
-                <Input type="number" value={stopLoss} onChange={e => setStopLoss(e.target.value)} disabled={isRunning} className="h-5 text-[8px] p-0 text-center" />
-              </div>
-              <div className="bg-slate-800/30 rounded-lg p-1 text-center">
-                <div className="text-[6px] text-slate-400">Turbo</div>
-                <Button size="sm" variant={turboMode ? 'default' : 'outline'} className={`h-5 text-[7px] px-1 w-full ${turboMode ? 'bg-amber-500' : ''}`} onClick={() => setTurboMode(!turboMode)} disabled={isRunning}>{turboMode ? '⚡' : 'OFF'}</Button>
+              
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs text-slate-400 mb-1 block">Symbol</label>
+                    <Select value={m1Symbol} onValueChange={setM1Symbol} disabled={isRunning}>
+                      <SelectTrigger className="bg-slate-800/50">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {ALL_MARKETS.map(m => (
+                          <SelectItem key={m.symbol} value={m.symbol}>
+                            {m.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <label className="text-xs text-slate-400 mb-1 block">Contract Type</label>
+                    <Select value={m1Contract} onValueChange={setM1Contract} disabled={isRunning}>
+                      <SelectTrigger className="bg-slate-800/50">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {CONTRACT_TYPES.map(c => (
+                          <SelectItem key={c} value={c}>{c}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                
+                {needsBarrier(m1Contract) && (
+                  <div>
+                    <label className="text-xs text-slate-400 mb-1 block">Barrier (0-9)</label>
+                    <Input 
+                      type="number" 
+                      min="0" 
+                      max="9" 
+                      value={m1Barrier} 
+                      onChange={e => setM1Barrier(e.target.value)} 
+                      className="bg-slate-800/50"
+                      disabled={isRunning} 
+                    />
+                  </div>
+                )}
+                
+                <button 
+                  onClick={() => setExpandedM1(!expandedM1)} 
+                  className="w-full text-xs text-slate-400 hover:text-blue-400 flex items-center justify-center gap-2 py-2"
+                >
+                  {expandedM1 ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                  {expandedM1 ? 'Show Less Options' : 'Show More Options'}
+                </button>
+                
+                {expandedM1 && (
+                  <div className="space-y-3 pt-3 border-t border-blue-500/20">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-slate-300">Virtual Hook Strategy</span>
+                      <Switch checked={m1HookEnabled} onCheckedChange={setM1HookEnabled} disabled={isRunning} />
+                    </div>
+                    
+                    {m1HookEnabled && (
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="text-xs text-slate-400 mb-1 block">Required Losses</label>
+                          <Input 
+                            type="number" 
+                            value={m1VirtualLossCount} 
+                            onChange={e => setM1VirtualLossCount(e.target.value)} 
+                            className="bg-slate-800/50"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-xs text-slate-400 mb-1 block">Real Trades After</label>
+                          <Input 
+                            type="number" 
+                            value={m1RealCount} 
+                            onChange={e => setM1RealCount(e.target.value)} 
+                            className="bg-slate-800/50"
+                          />
+                        </div>
+                      </div>
+                    )}
+                    
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-slate-300">Combined Strategy</span>
+                      <Switch checked={m1CombinedEnabled} onCheckedChange={setM1CombinedEnabled} disabled={isRunning} />
+                    </div>
+                    
+                    {m1CombinedEnabled && (
+                      <div>
+                        <label className="text-xs text-slate-400 mb-1 block">Patterns (comma separated)</label>
+                        <Textarea 
+                          placeholder="Examples: 1,5,11,112, E,E, OO" 
+                          value={m1CombinedPatterns} 
+                          onChange={e => setM1CombinedPatterns(e.target.value)} 
+                          className="h-20 text-xs font-mono bg-slate-800/50"
+                        />
+                      </div>
+                    )}
+                    
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-slate-300">Pattern Strategy</span>
+                      <Switch checked={m1StrategyEnabled} onCheckedChange={setM1StrategyEnabled} disabled={isRunning} />
+                    </div>
+                    
+                    {m1StrategyEnabled && (
+                      <div className="space-y-3">
+                        <div className="flex gap-2">
+                          <Button 
+                            variant={m1StrategyMode === 'pattern' ? 'default' : 'outline'} 
+                            className="flex-1"
+                            onClick={() => setM1StrategyMode('pattern')}
+                          >
+                            Pattern (E/O)
+                          </Button>
+                          <Button 
+                            variant={m1StrategyMode === 'digit' ? 'default' : 'outline'} 
+                            className="flex-1"
+                            onClick={() => setM1StrategyMode('digit')}
+                          >
+                            Digit Condition
+                          </Button>
+                        </div>
+                        
+                        {m1StrategyMode === 'pattern' && (
+                          <div>
+                            <label className="text-xs text-slate-400 mb-1 block">Pattern (E/O only, min 2 chars)</label>
+                            <Input 
+                              placeholder="Example: EEO" 
+                              value={m1Pattern} 
+                              onChange={e => setM1Pattern(e.target.value)} 
+                              className="bg-slate-800/50 font-mono"
+                            />
+                            {m1Pattern && m1PatternValid === false && (
+                              <p className="text-xs text-rose-400 mt-1">Invalid pattern! Use only E and O</p>
+                            )}
+                          </div>
+                        )}
+                        
+                        {m1StrategyMode === 'digit' && (
+                          <div className="grid grid-cols-3 gap-2">
+                            <div>
+                              <label className="text-xs text-slate-400 mb-1 block">Condition</label>
+                              <Select value={m1DigitCondition} onValueChange={setM1DigitCondition}>
+                                <SelectTrigger className="bg-slate-800/50">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="==">=</SelectItem>
+                                  <SelectItem value=">">&gt;</SelectItem>
+                                  <SelectItem value="<">&lt;</SelectItem>
+                                  <SelectItem value=">=">&gt;=</SelectItem>
+                                  <SelectItem value="<=">&lt;=</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div>
+                              <label className="text-xs text-slate-400 mb-1 block">Value</label>
+                              <Input 
+                                type="number" 
+                                min="0" 
+                                max="9" 
+                                value={m1DigitCompare} 
+                                onChange={e => setM1DigitCompare(e.target.value)} 
+                                className="bg-slate-800/50"
+                              />
+                            </div>
+                            <div>
+                              <label className="text-xs text-slate-400 mb-1 block">Window</label>
+                              <Input 
+                                type="number" 
+                                min="1" 
+                                max="10" 
+                                value={m1DigitWindow} 
+                                onChange={e => setM1DigitWindow(e.target.value)} 
+                                className="bg-slate-800/50"
+                              />
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
-            <div className="flex items-center gap-2">
-              <div className="flex items-center gap-1">
-                <span className="text-[7px] text-slate-300">Martingale</span>
-                <Switch checked={martingaleOn} onCheckedChange={setMartingaleOn} disabled={isRunning} className="scale-75" />
+            
+            {/* Market 2 - Recovery */}
+            <div className="bg-gradient-to-br from-slate-900/90 to-slate-900/50 backdrop-blur-sm border border-purple-500/30 rounded-xl p-4">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
+                    <RefreshCw className="w-5 h-5 text-white" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-purple-400">RECOVERY MARKET (M2)</h3>
+                    <p className="text-xs text-slate-400">Loss Recovery Channel</p>
+                  </div>
+                </div>
+                <Switch checked={m2Enabled} onCheckedChange={setM2Enabled} disabled={isRunning} />
               </div>
+              
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs text-slate-400 mb-1 block">Symbol</label>
+                    <Select value={m2Symbol} onValueChange={setM2Symbol} disabled={isRunning}>
+                      <SelectTrigger className="bg-slate-800/50">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {ALL_MARKETS.map(m => (
+                          <SelectItem key={m.symbol} value={m.symbol}>
+                            {m.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <label className="text-xs text-slate-400 mb-1 block">Contract Type</label>
+                    <Select value={m2Contract} onValueChange={setM2Contract} disabled={isRunning}>
+                      <SelectTrigger className="bg-slate-800/50">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {CONTRACT_TYPES.map(c => (
+                          <SelectItem key={c} value={c}>{c}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                
+                {needsBarrier(m2Contract) && (
+                  <div>
+                    <label className="text-xs text-slate-400 mb-1 block">Barrier (0-9)</label>
+                    <Input 
+                      type="number" 
+                      min="0" 
+                      max="9" 
+                      value={m2Barrier} 
+                      onChange={e => setM2Barrier(e.target.value)} 
+                      className="bg-slate-800/50"
+                      disabled={isRunning} 
+                    />
+                  </div>
+                )}
+                
+                <button 
+                  onClick={() => setExpandedM2(!expandedM2)} 
+                  className="w-full text-xs text-slate-400 hover:text-purple-400 flex items-center justify-center gap-2 py-2"
+                >
+                  {expandedM2 ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                  {expandedM2 ? 'Show Less Options' : 'Show More Options'}
+                </button>
+                
+                {expandedM2 && (
+                  <div className="space-y-3 pt-3 border-t border-purple-500/20">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-slate-300">Virtual Hook Strategy</span>
+                      <Switch checked={m2HookEnabled} onCheckedChange={setM2HookEnabled} disabled={isRunning} />
+                    </div>
+                    
+                    {m2HookEnabled && (
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="text-xs text-slate-400 mb-1 block">Required Losses</label>
+                          <Input 
+                            type="number" 
+                            value={m2VirtualLossCount} 
+                            onChange={e => setM2VirtualLossCount(e.target.value)} 
+                            className="bg-slate-800/50"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-xs text-slate-400 mb-1 block">Real Trades After</label>
+                          <Input 
+                            type="number" 
+                            value={m2RealCount} 
+                            onChange={e => setM2RealCount(e.target.value)} 
+                            className="bg-slate-800/50"
+                          />
+                        </div>
+                      </div>
+                    )}
+                    
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-slate-300">Combined Strategy</span>
+                      <Switch checked={m2CombinedEnabled} onCheckedChange={setM2CombinedEnabled} disabled={isRunning} />
+                    </div>
+                    
+                    {m2CombinedEnabled && (
+                      <div>
+                        <label className="text-xs text-slate-400 mb-1 block">Patterns (comma separated)</label>
+                        <Textarea 
+                          placeholder="Examples: 1,5,11,112, E,E, OO" 
+                          value={m2CombinedPatterns} 
+                          onChange={e => setM2CombinedPatterns(e.target.value)} 
+                          className="h-20 text-xs font-mono bg-slate-800/50"
+                        />
+                      </div>
+                    )}
+                    
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-slate-300">Pattern Strategy</span>
+                      <Switch checked={m2StrategyEnabled} onCheckedChange={setM2StrategyEnabled} disabled={isRunning} />
+                    </div>
+                    
+                    {m2StrategyEnabled && (
+                      <div className="space-y-3">
+                        <div className="flex gap-2">
+                          <Button 
+                            variant={m2StrategyMode === 'pattern' ? 'default' : 'outline'} 
+                            className="flex-1"
+                            onClick={() => setM2StrategyMode('pattern')}
+                          >
+                            Pattern (E/O)
+                          </Button>
+                          <Button 
+                            variant={m2StrategyMode === 'digit' ? 'default' : 'outline'} 
+                            className="flex-1"
+                            onClick={() => setM2StrategyMode('digit')}
+                          >
+                            Digit Condition
+                          </Button>
+                        </div>
+                        
+                        {m2StrategyMode === 'pattern' && (
+                          <div>
+                            <label className="text-xs text-slate-400 mb-1 block">Pattern (E/O only, min 2 chars)</label>
+                            <Input 
+                              placeholder="Example: EEO" 
+                              value={m2Pattern} 
+                              onChange={e => setM2Pattern(e.target.value)} 
+                              className="bg-slate-800/50 font-mono"
+                            />
+                            {m2Pattern && m2PatternValid === false && (
+                              <p className="text-xs text-rose-400 mt-1">Invalid pattern! Use only E and O</p>
+                            )}
+                          </div>
+                        )}
+                        
+                        {m2StrategyMode === 'digit' && (
+                          <div className="grid grid-cols-3 gap-2">
+                            <div>
+                              <label className="text-xs text-slate-400 mb-1 block">Condition</label>
+                              <Select value={m2DigitCondition} onValueChange={setM2DigitCondition}>
+                                <SelectTrigger className="bg-slate-800/50">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="==">=</SelectItem>
+                                  <SelectItem value=">">&gt;</SelectItem>
+                                  <SelectItem value="<">&lt;</SelectItem>
+                                  <SelectItem value=">=">&gt;=</SelectItem>
+                                  <SelectItem value="<=">&lt;=</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div>
+                              <label className="text-xs text-slate-400 mb-1 block">Value</label>
+                              <Input 
+                                type="number" 
+                                min="0" 
+                                max="9" 
+                                value={m2DigitCompare} 
+                                onChange={e => setM2DigitCompare(e.target.value)} 
+                                className="bg-slate-800/50"
+                              />
+                            </div>
+                            <div>
+                              <label className="text-xs text-slate-400 mb-1 block">Window</label>
+                              <Input 
+                                type="number" 
+                                min="1" 
+                                max="10" 
+                                value={m2DigitWindow} 
+                                onChange={e => setM2DigitWindow(e.target.value)} 
+                                className="bg-slate-800/50"
+                              />
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Risk Management */}
+          <div className="bg-gradient-to-br from-slate-900/90 to-slate-900/50 backdrop-blur-sm border border-amber-500/30 rounded-xl p-4 mb-6">
+            <div className="flex items-center gap-2 mb-4">
+              <Shield className="w-5 h-5 text-amber-400" />
+              <h3 className="text-sm font-semibold text-amber-400">Risk Management & Settings</h3>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div>
+                <label className="text-xs text-slate-400 mb-1 block">Base Stake ($)</label>
+                <Input 
+                  type="number" 
+                  min="0.35" 
+                  step="0.01" 
+                  value={stake} 
+                  onChange={e => setStake(e.target.value)} 
+                  disabled={isRunning}
+                  className="bg-slate-800/50"
+                />
+              </div>
+              
+              <div>
+                <label className="text-xs text-slate-400 mb-1 block">Take Profit ($)</label>
+                <Input 
+                  type="number" 
+                  value={takeProfit} 
+                  onChange={e => setTakeProfit(e.target.value)} 
+                  disabled={isRunning}
+                  className="bg-slate-800/50"
+                />
+              </div>
+              
+              <div>
+                <label className="text-xs text-slate-400 mb-1 block">Stop Loss ($)</label>
+                <Input 
+                  type="number" 
+                  value={stopLoss} 
+                  onChange={e => setStopLoss(e.target.value)} 
+                  disabled={isRunning}
+                  className="bg-slate-800/50"
+                />
+              </div>
+              
+              <div>
+                <label className="text-xs text-slate-400 mb-1 block">Turbo Mode</label>
+                <Button 
+                  variant={turboMode ? 'default' : 'outline'} 
+                  className={`w-full ${turboMode ? 'bg-amber-500' : ''}`}
+                  onClick={() => setTurboMode(!turboMode)} 
+                  disabled={isRunning}
+                >
+                  {turboMode ? '⚡ Turbo Enabled' : '🐢 Normal Mode'}
+                </Button>
+              </div>
+            </div>
+            
+            <div className="flex items-center gap-4 mt-4 pt-4 border-t border-amber-500/20">
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-slate-300">Martingale</span>
+                <Switch checked={martingaleOn} onCheckedChange={setMartingaleOn} disabled={isRunning} />
+              </div>
+              
               {martingaleOn && (
                 <>
-                  <Input type="number" min="1.1" step="0.1" value={martingaleMultiplier} onChange={e => setMartingaleMultiplier(e.target.value)} className="h-5 w-16 text-[8px]" placeholder="x" />
-                  <Input type="number" min="1" max="10" value={martingaleMaxSteps} onChange={e => setMartingaleMaxSteps(e.target.value)} className="h-5 w-12 text-[8px]" placeholder="steps" />
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-slate-400">Multiplier:</span>
+                    <Input 
+                      type="number" 
+                      min="1.1" 
+                      step="0.1" 
+                      value={martingaleMultiplier} 
+                      onChange={e => setMartingaleMultiplier(e.target.value)} 
+                      className="w-24 h-8 text-sm bg-slate-800/50"
+                      placeholder="x"
+                    />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-slate-400">Max Steps:</span>
+                    <Input 
+                      type="number" 
+                      min="1" 
+                      max="10" 
+                      value={martingaleMaxSteps} 
+                      onChange={e => setMartingaleMaxSteps(e.target.value)} 
+                      className="w-20 h-8 text-sm bg-slate-800/50"
+                      placeholder="steps"
+                    />
+                  </div>
                 </>
               )}
             </div>
           </div>
           
-          {/* Start/Stop Button - Compact */}
+          {/* Start/Stop Button */}
           <button
             onClick={isRunning ? stopBot : startBot}
             disabled={(!isRunning && (!isAuthorized || localBalance < parseFloat(stake) || (!isConnected && !isRunning)))}
-            className={`relative w-full h-10 text-sm font-bold rounded-xl transition-all ${isRunning ? 'bg-gradient-to-r from-rose-600 to-red-500' : 'bg-gradient-to-r from-emerald-600 to-teal-500'} text-white disabled:opacity-50 active:scale-[0.98]`}
+            className={`relative w-full h-14 text-base font-bold rounded-xl transition-all mb-6 ${
+              isRunning 
+                ? 'bg-gradient-to-r from-rose-600 to-red-500 hover:from-rose-700 hover:to-red-600' 
+                : 'bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-700 hover:to-teal-600'
+            } text-white disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98]`}
           >
             <div className="flex items-center justify-center gap-2">
-              {isRunning ? <><StopCircle className="w-4 h-4" /> STOP</> : <><Play className="w-4 h-4" /> START</>}
+              {isRunning ? (
+                <><StopCircle className="w-5 h-5" /> STOP BOT</>
+              ) : (
+                <><Play className="w-5 h-5" /> START BOT</>
+              )}
             </div>
           </button>
           
-          {/* Live Status - Compact */}
-          <div className="bg-gradient-to-br from-slate-900/90 to-slate-900/50 backdrop-blur-sm border border-blue-500/30 rounded-xl p-2">
-            <div className="grid grid-cols-4 gap-1.5 text-center">
-              <div><div className="text-[6px] text-slate-400">Status</div><div className={`text-[9px] font-bold ${status.color}`}>{status.icon}</div></div>
-              <div><div className="text-[6px] text-slate-400">Market</div><div className={`text-[9px] font-bold ${currentMarket === 1 ? 'text-blue-400' : 'text-purple-400'}`}>{currentMarket === 1 ? 'M1' : 'M2'}</div></div>
-              <div><div className="text-[6px] text-slate-400">WinRate</div><div className="text-[9px] font-bold text-emerald-400">{winRate}%</div></div>
-              <div><div className="text-[6px] text-slate-400">P/L</div><div className={`text-[9px] font-bold ${netProfit >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>${netProfit.toFixed(2)}</div></div>
+          {/* Live Statistics */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+            <div className="bg-gradient-to-br from-slate-900/90 to-slate-900/50 backdrop-blur-sm border border-blue-500/30 rounded-xl p-4">
+              <h3 className="text-sm font-semibold text-blue-400 mb-3">Bot Status</h3>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div>
+                  <div className="text-xs text-slate-400 mb-1">Current Status</div>
+                  <div className={`text-lg font-bold ${status.color}`}>{status.icon} {status.label}</div>
+                </div>
+                <div>
+                  <div className="text-xs text-slate-400 mb-1">Active Market</div>
+                  <div className={`text-lg font-bold ${currentMarket === 1 ? 'text-blue-400' : 'text-purple-400'}`}>
+                    {currentMarket === 1 ? 'M1 - Primary' : 'M2 - Recovery'}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-xs text-slate-400 mb-1">Current Stake</div>
+                  <div className="text-lg font-bold text-amber-400">${currentStake.toFixed(2)}</div>
+                </div>
+                <div>
+                  <div className="text-xs text-slate-400 mb-1">Martingale Step</div>
+                  <div className="text-lg font-bold">{martingaleStep}</div>
+                </div>
+              </div>
             </div>
-            <div className="grid grid-cols-4 gap-1.5 mt-1.5 text-center">
-              <div><div className="text-[6px] text-slate-400">Stake</div><div className="text-[9px] font-bold text-amber-400">${currentStake.toFixed(2)}</div></div>
-              <div><div className="text-[6px] text-slate-400">Balance</div><div className="text-[9px] font-bold text-blue-400">${localBalance.toFixed(2)}</div></div>
-              <div><div className="text-[6px] text-slate-400">Staked</div><div className="text-[9px] font-bold">${totalStaked.toFixed(2)}</div></div>
-              <div><div className="text-[6px] text-slate-400">W/L</div><div className="text-[9px] font-bold"><span className="text-emerald-400">{wins}</span>/<span className="text-rose-400">{losses}</span></div></div>
+            
+            <div className="bg-gradient-to-br from-slate-900/90 to-slate-900/50 backdrop-blur-sm border border-purple-500/30 rounded-xl p-4">
+              <h3 className="text-sm font-semibold text-purple-400 mb-3">Performance</h3>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div>
+                  <div className="text-xs text-slate-400 mb-1">Win Rate</div>
+                  <div className="text-lg font-bold text-emerald-400">{winRate}%</div>
+                </div>
+                <div>
+                  <div className="text-xs text-slate-400 mb-1">Profit/Loss</div>
+                  <div className={`text-lg font-bold ${netProfit >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                    ${netProfit.toFixed(2)}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-xs text-slate-400 mb-1">Balance</div>
+                  <div className="text-lg font-bold text-blue-400">${localBalance.toFixed(2)}</div>
+                </div>
+                <div>
+                  <div className="text-xs text-slate-400 mb-1">Wins / Losses</div>
+                  <div className="text-lg font-bold">
+                    <span className="text-emerald-400">{wins}</span> / <span className="text-rose-400">{losses}</span>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
           
-          {/* Activity Log - Compact */}
-          <div className="bg-gradient-to-br from-slate-900/90 to-slate-900/50 backdrop-blur-sm border border-indigo-500/30 rounded-xl overflow-hidden flex-1 min-h-0 flex flex-col">
-            <div className="px-2 py-1.5 border-b border-indigo-500/30 flex items-center justify-between bg-slate-800/20">
-              <h3 className="text-[9px] font-semibold flex items-center gap-1 text-indigo-400"><RefreshCw className="w-3 h-3" /> Logs</h3>
-              <Button variant="ghost" size="sm" onClick={clearLog} className="h-5 w-5 p-0"><Trash2 className="w-2.5 h-2.5" /></Button>
+          {/* Activity Log */}
+          <div className="bg-gradient-to-br from-slate-900/90 to-slate-900/50 backdrop-blur-sm border border-indigo-500/30 rounded-xl overflow-hidden">
+            <div className="px-4 py-3 border-b border-indigo-500/30 flex items-center justify-between bg-slate-800/20">
+              <h3 className="text-sm font-semibold flex items-center gap-2 text-indigo-400">
+                <RefreshCw className="w-4 h-4" /> Trading Activity Log
+              </h3>
+              <Button variant="ghost" size="sm" onClick={clearLog} className="text-xs">
+                <Trash2 className="w-3.5 h-3.5 mr-1" /> Clear
+              </Button>
             </div>
-            <div className="flex-1 overflow-auto text-[8px]">
-              <table className="w-full text-[7px]">
-                <thead className="text-[6px] text-slate-400 bg-slate-800/30 sticky top-0">
-                  <tr><th className="text-left p-1.5">Time</th><th className="text-left p-1.5">Mkt</th><th className="text-left p-1.5">Sym</th><th className="text-left p-1.5">Type</th><th className="text-right p-1.5">Stake</th><th className="text-center p-1.5">Digit</th><th className="text-center p-1.5">Result</th><th className="text-right p-1.5">P/L</th></tr>
+            
+            <div className="max-h-96 overflow-auto">
+              <table className="w-full text-sm">
+                <thead className="text-xs text-slate-400 bg-slate-800/30 sticky top-0">
+                  <tr>
+                    <th className="text-left p-3">Time</th>
+                    <th className="text-left p-3">Market</th>
+                    <th className="text-left p-3">Symbol</th>
+                    <th className="text-left p-3">Type</th>
+                    <th className="text-right p-3">Stake</th>
+                    <th className="text-center p-3">Exit Digit</th>
+                    <th className="text-center p-3">Result</th>
+                    <th className="text-right p-3">P/L</th>
+                    <th className="text-left p-3">Info</th>
+                  </tr>
                 </thead>
                 <tbody>
                   {logEntries.length === 0 ? (
-                    <tr><td colSpan={8} className="text-center text-slate-500 py-6 text-[7px]">No trades yet</td></tr>
-                  ) : logEntries.map(e => (
-                    <tr key={e.id} className={`border-b border-slate-800/50 ${e.market === 'M1' ? 'border-l-2 border-l-blue-500' : e.market === 'VH' ? 'border-l-2 border-l-indigo-500' : e.market === 'COMBINED' ? 'border-l-2 border-l-green-500' : 'border-l-2 border-l-purple-500'}`}>
-                      <td className="p-1.5 font-mono text-[6px]">{e.time.slice(-5)}</td>
-                      <td className={`p-1.5 font-bold text-[8px] ${e.market === 'M1' ? 'text-blue-400' : e.market === 'VH' ? 'text-indigo-400' : e.market === 'COMBINED' ? 'text-green-400' : 'text-purple-400'}`}>{e.market}</td>
-                      <td className="p-1.5 font-mono text-[7px]">{e.symbol.slice(-3)}</td>
-                      <td className="p-1.5 text-[7px]">{e.contract.replace('DIGIT', '')}</td>
-                      <td className="p-1.5 text-right">{e.market === 'VH' ? 'FAKE' : <span className="text-amber-400">${e.stake.toFixed(2)}</span>}</td>
-                      <td className="p-1.5 text-center font-mono font-bold">{e.exitDigit}</td>
-                      <td className="p-1.5 text-center"><span className={`px-1 py-0.5 rounded text-[6px] ${e.result === 'Win' || e.result === 'V-Win' ? 'bg-emerald-500/20 text-emerald-400' : e.result === 'Loss' || e.result === 'V-Loss' ? 'bg-rose-500/20 text-rose-400' : 'bg-yellow-500/20 text-yellow-500'}`}>{e.result === 'Pending' ? '...' : e.result === 'V-Win' ? '✓' : e.result === 'V-Loss' ? '✗' : e.result}</span></td>
-                      <td className={`p-1.5 text-right font-bold text-[7px] ${e.pnl > 0 ? 'text-emerald-400' : e.pnl < 0 ? 'text-rose-400' : 'text-slate-400'}`}>{e.result === 'Pending' ? '...' : `${e.pnl > 0 ? '+' : ''}${e.pnl.toFixed(2)}`}</td>
+                    <tr>
+                      <td colSpan={9} className="text-center text-slate-500 py-12">
+                        No trading activity yet. Start the bot to begin trading.
+                      </td>
                     </tr>
-                  ))}
+                  ) : (
+                    logEntries.map(e => (
+                      <tr key={e.id} className={`border-b border-slate-800/50 hover:bg-slate-800/30 transition-colors ${
+                        e.market === 'M1' ? 'border-l-4 border-l-blue-500' : 
+                        e.market === 'VH' ? 'border-l-4 border-l-indigo-500' : 
+                        e.market === 'COMBINED' ? 'border-l-4 border-l-green-500' : 
+                        'border-l-4 border-l-purple-500'
+                      }`}>
+                        <td className="p-3 font-mono text-xs">{e.time}</td>
+                        <td className={`p-3 font-bold text-sm ${
+                          e.market === 'M1' ? 'text-blue-400' : 
+                          e.market === 'VH' ? 'text-indigo-400' : 
+                          e.market === 'COMBINED' ? 'text-green-400' : 
+                          'text-purple-400'
+                        }`}>
+                          {e.market}
+                        </td>
+                        <td className="p-3 font-mono text-sm">{e.symbol}</td>
+                        <td className="p-3 text-xs">{e.contract.replace('DIGIT', '')}</td>
+                        <td className="p-3 text-right font-mono">
+                          {e.market === 'VH' ? 'VIRTUAL' : <span className="text-amber-400">${e.stake.toFixed(2)}</span>}
+                        </td>
+                        <td className="p-3 text-center font-mono font-bold text-lg">{e.exitDigit}</td>
+                        <td className="p-3 text-center">
+                          <span className={`px-2 py-1 rounded text-xs font-medium ${
+                            e.result === 'Win' || e.result === 'V-Win' 
+                              ? 'bg-emerald-500/20 text-emerald-400' 
+                              : e.result === 'Loss' || e.result === 'V-Loss' 
+                              ? 'bg-rose-500/20 text-rose-400' 
+                              : 'bg-yellow-500/20 text-yellow-500'
+                          }`}>
+                            {e.result === 'Pending' ? '...' : e.result === 'V-Win' ? '✓ V-Win' : e.result === 'V-Loss' ? '✗ V-Loss' : e.result}
+                          </span>
+                        </td>
+                        <td className={`p-3 text-right font-bold text-sm ${
+                          e.pnl > 0 ? 'text-emerald-400' : e.pnl < 0 ? 'text-rose-400' : 'text-slate-400'
+                        }`}>
+                          {e.result === 'Pending' ? '...' : `${e.pnl > 0 ? '+' : ''}${e.pnl.toFixed(2)}`}
+                        </td>
+                        <td className="p-3 text-xs text-slate-400 max-w-xs truncate" title={e.switchInfo}>
+                          {e.switchInfo}
+                        </td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>
@@ -1052,4 +1480,4 @@ export default function RamzfxSpeedBot() {
       </div>
     </>
   );
-}
+   }
