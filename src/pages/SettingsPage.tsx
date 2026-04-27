@@ -1,9 +1,6 @@
-import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
-import { useAuth } from '@/contexts/AuthContext';
-import { derivApi, type MarketSymbol } from '@/services/deriv-api';
+import { useState, useCallback, useRef, useEffect } from 'react';
+import { derivApi } from '@/services/deriv-api';
 import { getLastDigit } from '@/services/analysis';
-import { copyTradingService } from '@/services/copy-trading-service';
-import { useLossRequirement } from '@/hooks/useLossRequirement';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -12,10 +9,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import {
   Play, StopCircle, Trash2, Home, RefreshCw, Shield, Zap, Eye, Anchor, Trophy,
-  TrendingUp, TrendingDown, BarChart3, Volume2, VolumeX, Wifi, WifiOff, GripVertical, Combine, Sparkles, ChevronDown, ChevronUp
+  TrendingUp, TrendingDown, BarChart3, Volume2, VolumeX, Wifi, WifiOff, GripVertical, Combine, Sparkles, ChevronDown, ChevronUp, Target, Activity, Gauge, Clock
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { motion } from 'framer-motion';
 
 // ============================================
 // MARKET CONFIGURATION
@@ -49,7 +45,12 @@ const ALL_MARKETS: { symbol: string; name: string; group: string }[] = [
 ];
 
 const CONTRACT_TYPES = [
-  'DIGITEVEN', 'DIGITODD', 'DIGITMATCH', 'DIGITDIFF', 'DIGITOVER', 'DIGITUNDER',
+  { value: 'DIGITEVEN', label: 'Even' },
+  { value: 'DIGITODD', label: 'Odd' },
+  { value: 'DIGITMATCH', label: 'Match' },
+  { value: 'DIGITDIFF', label: 'Differs' },
+  { value: 'DIGITOVER', label: 'Over' },
+  { value: 'DIGITUNDER', label: 'Under' },
 ] as const;
 
 const needsBarrier = (ct: string) => ['DIGITMATCH', 'DIGITDIFF', 'DIGITOVER', 'DIGITUNDER'].includes(ct);
@@ -75,12 +76,6 @@ interface LogEntry {
 // TP/SL NOTIFICATION POPUP
 // ============================================
 
-const showTPNotification = (type: 'tp' | 'sl', message: string, amount?: number) => {
-  if (typeof window !== 'undefined' && (window as any).showTPNotification) {
-    (window as any).showTPNotification(type, message, amount);
-  }
-};
-
 const TPSLNotificationPopup = () => {
   const [notification, setNotification] = useState<{ type: 'tp' | 'sl'; message: string; amount?: number } | null>(null);
   const [isVisible, setIsVisible] = useState(false);
@@ -98,7 +93,6 @@ const TPSLNotificationPopup = () => {
   if (!isVisible || !notification) return null;
 
   const isTP = notification.type === 'tp';
-  const amount = notification.amount;
 
   return (
     <div className="fixed bottom-4 right-4 z-50 max-w-sm animate-in slide-in-from-right duration-300">
@@ -109,9 +103,15 @@ const TPSLNotificationPopup = () => {
           </div>
           <div className="flex-1">
             <p className="text-white text-xs font-medium">{notification.message}</p>
-            {amount && <p className={`text-xs font-bold ${isTP ? 'text-emerald-200' : 'text-rose-200'}`}>{isTP ? '+' : '-'}${Math.abs(amount).toFixed(2)}</p>}
+            {notification.amount && (
+              <p className={`text-xs font-bold ${isTP ? 'text-emerald-200' : 'text-rose-200'}`}>
+                {isTP ? '+' : '-'}${Math.abs(notification.amount).toFixed(2)}
+              </p>
+            )}
           </div>
-          <button onClick={() => setIsVisible(false)} className="text-white/70 hover:text-white text-xs">OK</button>
+          <button onClick={() => setIsVisible(false)} className="text-white/70 hover:text-white text-xs">
+            OK
+          </button>
         </div>
       </div>
     </div>
@@ -143,6 +143,15 @@ class CircularTickBuffer {
     return result;
   }
   get size() { return this.count; }
+}
+
+const tickBuffers: Map<string, CircularTickBuffer> = new Map();
+
+function getTickBuffer(symbol: string): CircularTickBuffer {
+  if (!tickBuffers.has(symbol)) {
+    tickBuffers.set(symbol, new CircularTickBuffer(1000));
+  }
+  return tickBuffers.get(symbol)!;
 }
 
 function waitForNextTick(symbol: string): Promise<{ quote: number }> {
@@ -210,13 +219,13 @@ function checkCombinedPattern(digits: number[], patternStr: string): boolean {
   return false;
 }
 
-// Helper for non-blocking delays
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
+// ============================================
+// MAIN COMPONENT
+// ============================================
+
 export default function RamzfxSpeedBot() {
-  const { isAuthorized, balance: authBalance, activeAccount, refreshBalance } = useAuth();
-  const { recordLoss } = useLossRequirement();
-  
   // UI State for collapsible sections
   const [expandedM1, setExpandedM1] = useState(false);
   const [expandedM2, setExpandedM2] = useState(false);
@@ -263,6 +272,7 @@ export default function RamzfxSpeedBot() {
   const [takeProfit, setTakeProfit] = useState('5');
   const [stopLoss, setStopLoss] = useState('30');
   const [turboMode, setTurboMode] = useState(true);
+  const [voiceEnabled, setVoiceEnabled] = useState(false);
   
   // ========== BOT STATE ==========
   const [isRunning, setIsRunning] = useState(false);
@@ -273,7 +283,7 @@ export default function RamzfxSpeedBot() {
   const [currentStake, setCurrentStakeState] = useState(0);
   const [martingaleStep, setMartingaleStepState] = useState(0);
   const [netProfit, setNetProfit] = useState(0);
-  const [localBalance, setLocalBalance] = useState(authBalance);
+  const [balance, setBalance] = useState(10000);
   const [wins, setWins] = useState(0);
   const [losses, setLosses] = useState(0);
   const [totalStaked, setTotalStaked] = useState(0);
@@ -286,19 +296,24 @@ export default function RamzfxSpeedBot() {
   const [vhConsecLosses, setVhConsecLosses] = useState(0);
   const [vhStatus, setVhStatus] = useState<'idle' | 'waiting' | 'confirmed' | 'failed'>('idle');
   const patternTradeTakenRef = useRef(false);
-  const combinedTradeTakenRef = useRef(false);
-  
-  // Tick storage
-  const tickMapRef = useRef<Map<string, number[]>>(new Map());
-  const [tickCounts, setTickCounts] = useState<Record<string, number>>({});
   
   // Connection
-  const [isConnected, setIsConnected] = useState(derivApi.isConnected);
+  const [isConnected, setIsConnected] = useState(true);
+  
+  // Voice synthesis
+  const speak = useCallback((text: string) => {
+    if (!voiceEnabled || typeof window === 'undefined' || !window.speechSynthesis) return;
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.rate = 1;
+    utterance.pitch = 1;
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(utterance);
+  }, [voiceEnabled]);
   
   // ========== HELPERS ==========
   const addLog = useCallback((entry: Omit<LogEntry, 'id'>) => {
     const id = ++logIdRef.current;
-    setLogEntries(prev => [{ ...entry, id }, ...prev].slice(0, 50));
+    setLogEntries(prev => [{ ...entry, id }, ...prev].slice(0, 100));
     return id;
   }, []);
   
@@ -312,36 +327,17 @@ export default function RamzfxSpeedBot() {
     setMartingaleStepState(0);
     setVhFakeWins(0); setVhFakeLosses(0); setVhConsecLosses(0); setVhStatus('idle');
     patternTradeTakenRef.current = false;
-    combinedTradeTakenRef.current = false;
     shouldStopRef.current = false;
-  }, []);
-  
-  const ensureConnection = useCallback(async (): Promise<boolean> => {
-    if (derivApi.isConnected) {
-      setIsConnected(true);
-      return true;
-    }
-    try {
-      await derivApi.connect();
-      await delay(2000);
-      setIsConnected(derivApi.isConnected);
-      return derivApi.isConnected;
-    } catch (error) {
-      setIsConnected(false);
-      return false;
-    }
+    toast.info('Log cleared');
   }, []);
   
   // ========== TICK SUBSCRIPTION ==========
   useEffect(() => {
     const handleTick = (data: any) => {
       if (data.tick && data.tick.symbol) {
-        const symbol = data.tick.symbol;
         const digit = getLastDigit(data.tick.quote);
-        const currentDigits = tickMapRef.current.get(symbol) || [];
-        const newDigits = [...currentDigits, digit].slice(-100);
-        tickMapRef.current.set(symbol, newDigits);
-        setTickCounts(prev => ({ ...prev, [symbol]: newDigits.length }));
+        const buffer = getTickBuffer(data.tick.symbol);
+        buffer.push(digit);
       }
     };
     
@@ -349,31 +345,31 @@ export default function RamzfxSpeedBot() {
     return () => unsubscribe();
   }, []);
   
-  // ========== STRATEGY CHECKING (Non-blocking) ==========
+  // ========== STRATEGY CHECKING ==========
   const cleanM1Pattern = m1Pattern.toUpperCase().replace(/[^EO]/g, '');
   const m1PatternValid = cleanM1Pattern.length >= 2;
   const cleanM2Pattern = m2Pattern.toUpperCase().replace(/[^EO]/g, '');
   const m2PatternValid = cleanM2Pattern.length >= 2;
   
   const checkPatternMatch = useCallback((symbol: string, pattern: string): boolean => {
-    const digits = tickMapRef.current.get(symbol) || [];
+    const buffer = getTickBuffer(symbol);
+    const digits = buffer.last(pattern.length);
     if (digits.length < pattern.length) return false;
-    const recent = digits.slice(-pattern.length);
     for (let i = 0; i < pattern.length; i++) {
       const expected = pattern[i];
-      const actual = recent[i] % 2 === 0 ? 'E' : 'O';
+      const actual = digits[i] % 2 === 0 ? 'E' : 'O';
       if (expected !== actual) return false;
     }
     return true;
   }, []);
   
   const checkDigitCondition = useCallback((symbol: string, condition: string, compare: string, windowStr: string): boolean => {
-    const digits = tickMapRef.current.get(symbol) || [];
+    const buffer = getTickBuffer(symbol);
     const win = parseInt(windowStr) || 3;
     const comp = parseInt(compare);
+    const digits = buffer.last(win);
     if (digits.length < win) return false;
-    const recent = digits.slice(-win);
-    return recent.every(d => {
+    return digits.every(d => {
       switch (condition) {
         case '>': return d > comp;
         case '<': return d < comp;
@@ -387,11 +383,11 @@ export default function RamzfxSpeedBot() {
   
   const checkCombinedForSymbol = useCallback((symbol: string, patterns: string): boolean => {
     if (!patterns || patterns.trim() === '') return false;
-    const digits = tickMapRef.current.get(symbol) || [];
+    const buffer = getTickBuffer(symbol);
+    const digits = buffer.last(100);
     return checkCombinedPattern(digits, patterns);
   }, []);
   
-  // Non-blocking pattern wait with proper cancellation
   const waitForPattern = useCallback(async (
     symbol: string,
     checkFn: () => boolean,
@@ -428,7 +424,7 @@ export default function RamzfxSpeedBot() {
     contractExecuted: boolean;
     insufficientFunds: boolean;
   }> => {
-    // Check balance FIRST before anything else
+    // Check balance first
     if (currentBalance < cStake) {
       addLog({
         time: new Date().toLocaleTimeString(),
@@ -441,9 +437,8 @@ export default function RamzfxSpeedBot() {
         result: 'Failed',
         pnl: 0,
         balance: currentBalance,
-        switchInfo: `❌ INSUFFICIENT FUNDS! Required: $${cStake.toFixed(2)}, Available: $${currentBalance.toFixed(2)}. Bot stopping.`,
+        switchInfo: `❌ INSUFFICIENT FUNDS! Required: $${cStake.toFixed(2)}, Available: $${currentBalance.toFixed(2)}`,
       });
-      toast.error(`Insufficient funds! Need $${cStake.toFixed(2)} but have $${currentBalance.toFixed(2)}`);
       return { 
         localPnl: currentPnl, 
         localBalance: currentBalance, 
@@ -455,36 +450,6 @@ export default function RamzfxSpeedBot() {
         contractExecuted: false,
         insufficientFunds: true
       };
-    }
-    
-    if (!derivApi.isConnected) {
-      const connected = await ensureConnection();
-      if (!connected) {
-        addLog({
-          time: new Date().toLocaleTimeString(),
-          market: 'SYSTEM',
-          symbol: tradeSymbol,
-          contract: cfg.contract,
-          stake: cStake,
-          martingaleStep: mStep,
-          exitDigit: '-',
-          result: 'Failed',
-          pnl: 0,
-          balance: currentBalance,
-          switchInfo: `❌ No connection available`,
-        });
-        return { 
-          localPnl: currentPnl, 
-          localBalance: currentBalance, 
-          cStake, 
-          mStep, 
-          inRecovery: mkt === 2, 
-          shouldBreak: false, 
-          won: false, 
-          contractExecuted: false,
-          insufficientFunds: false
-        };
-      }
     }
     
     const logId = addLog({
@@ -513,12 +478,10 @@ export default function RamzfxSpeedBot() {
     let newMStep = mStep;
     
     try {
-      // Wait for next tick if not in turbo mode
       if (!turboMode) {
         await waitForNextTick(tradeSymbol);
       }
       
-      // Prepare buy parameters
       const buyParams: any = {
         contract_type: cfg.contract,
         symbol: tradeSymbol,
@@ -532,26 +495,15 @@ export default function RamzfxSpeedBot() {
         buyParams.barrier = cfg.barrier;
       }
       
-      console.log('Buying contract with params:', buyParams);
-      
-      // Execute the buy
       const buyResponse = await derivApi.buyContract(buyParams);
       
-      // Check if purchase was successful
       if (!buyResponse || !buyResponse.contractId) {
-        throw new Error('Contract purchase failed - no contract ID returned');
+        throw new Error('Contract purchase failed');
       }
       
       contractExecuted = true;
       updateLog(logId, { switchInfo: `Contract purchased! ID: ${buyResponse.contractId}` });
       
-      // Copy trading if enabled
-      if (copyTradingService.enabled) {
-        copyTradingService.copyTrade({ ...buyParams, masterTradeId: buyResponse.contractId }).catch(console.error);
-      }
-      
-      // Wait for contract result
-      updateLog(logId, { switchInfo: `Waiting for result...` });
       const result = await derivApi.waitForContractResult(buyResponse.contractId);
       
       won = result.status === 'won';
@@ -559,11 +511,8 @@ export default function RamzfxSpeedBot() {
       
       updatedPnl = currentPnl + pnl;
       updatedBalance = currentBalance + pnl;
-      setLocalBalance(updatedBalance);
+      setBalance(updatedBalance);
       setNetProfit(updatedPnl);
-      
-      // Refresh balance from auth context
-      await refreshBalance();
       
       const exitDigit = String(getLastDigit(result.sellPrice || result.bidPrice || 0));
       let switchInfo = '';
@@ -578,17 +527,16 @@ export default function RamzfxSpeedBot() {
         }
         newMStep = 0;
         newCStake = baseStake;
+        if (voiceEnabled) speak(`Win! Profit $${pnl.toFixed(2)}`);
       } else {
         setLosses(prev => prev + 1);
-        if (activeAccount?.is_virtual) {
-          recordLoss(cStake, tradeSymbol, 6000);
-        }
         if (!inRecovery && m2Enabled) { 
           inRecovery = true; 
           switchInfo = '✗ Loss → Switch to M2 (Recovery)'; 
         } else { 
           switchInfo = inRecovery ? '→ Stay M2' : '→ Continue M1'; 
         }
+        if (voiceEnabled) speak(`Loss. $${Math.abs(pnl).toFixed(2)}`);
         
         if (martingaleOn) {
           const maxS = parseInt(martingaleMaxSteps) || 5;
@@ -620,7 +568,8 @@ export default function RamzfxSpeedBot() {
       const slValue = parseFloat(stopLoss);
       
       if (updatedPnl >= tpValue) {
-        showTPNotification('tp', `🎉 Take Profit Target Hit! $${updatedPnl.toFixed(2)}`, updatedPnl);
+        const showFn = (window as any).showTPNotification;
+        if (showFn) showFn('tp', `Take Profit Target Hit!`, updatedPnl);
         shouldBreak = true;
         shouldStopRef.current = true;
         addLog({
@@ -636,10 +585,12 @@ export default function RamzfxSpeedBot() {
           balance: updatedBalance,
           switchInfo: `✅ Take Profit reached! Stopping bot.`,
         });
+        if (voiceEnabled) speak(`Take profit reached! Total profit ${updatedPnl.toFixed(2)} dollars`);
       }
       
       if (updatedPnl <= -slValue) {
-        showTPNotification('sl', `😢 Stop Loss Target Hit! -$${Math.abs(updatedPnl).toFixed(2)}`, Math.abs(updatedPnl));
+        const showFn = (window as any).showTPNotification;
+        if (showFn) showFn('sl', `Stop Loss Target Hit!`, Math.abs(updatedPnl));
         shouldBreak = true;
         shouldStopRef.current = true;
         addLog({
@@ -655,6 +606,7 @@ export default function RamzfxSpeedBot() {
           balance: updatedBalance,
           switchInfo: `❌ Stop Loss reached! Stopping bot.`,
         });
+        if (voiceEnabled) speak(`Stop loss hit! Total loss ${Math.abs(updatedPnl).toFixed(2)} dollars`);
       }
       
       return { 
@@ -676,12 +628,7 @@ export default function RamzfxSpeedBot() {
         switchInfo: `❌ Trade failed: ${err.message || 'Unknown error'}` 
       });
       
-      // Check if it's an insufficient funds error
-      if (err.message && (err.message.toLowerCase().includes('balance') || 
-          err.message.toLowerCase().includes('funds') || 
-          err.message.toLowerCase().includes('amount') ||
-          err.message.toLowerCase().includes('insufficient'))) {
-        toast.error(`Insufficient funds! Balance: $${updatedBalance.toFixed(2)}`);
+      if (err.message && (err.message.toLowerCase().includes('balance') || err.message.toLowerCase().includes('funds'))) {
         return { 
           localPnl: updatedPnl, 
           localBalance: updatedBalance, 
@@ -695,7 +642,6 @@ export default function RamzfxSpeedBot() {
         };
       }
       
-      if (!turboMode) await delay(2000);
       return { 
         localPnl: updatedPnl, 
         localBalance: updatedBalance, 
@@ -708,127 +654,37 @@ export default function RamzfxSpeedBot() {
         insufficientFunds: false
       };
     }
-  }, [addLog, updateLog, m2Enabled, martingaleOn, martingaleMultiplier, martingaleMaxSteps, takeProfit, stopLoss, turboMode, ensureConnection, activeAccount, recordLoss, refreshBalance]);
+  }, [addLog, updateLog, m2Enabled, martingaleOn, martingaleMultiplier, martingaleMaxSteps, takeProfit, stopLoss, turboMode, voiceEnabled, speak]);
   
   // ========== START BOT ==========
   const startBot = useCallback(async () => {
-    if (!isAuthorized) {
-      toast.error('Please authorize first');
-      return;
-    }
-    
     if (isRunning) {
       toast.warning('Bot is already running');
       return;
     }
     
-    // Ensure connection first
-    const connected = await ensureConnection();
-    if (!connected) {
-      addLog({ 
-        time: new Date().toLocaleTimeString(), 
-        market: 'SYSTEM', 
-        symbol: 'ERROR', 
-        contract: 'CONNECTION', 
-        stake: 0, 
-        martingaleStep: 0, 
-        exitDigit: '-', 
-        result: 'Failed', 
-        pnl: 0, 
-        balance: authBalance, 
-        switchInfo: '❌ Failed to connect to Deriv. Please check your connection.' 
-      });
-      toast.error('Failed to connect to Deriv');
-      return;
-    }
-    
     const baseStake = parseFloat(stake);
     if (isNaN(baseStake) || baseStake < 0.35) {
-      addLog({ 
-        time: new Date().toLocaleTimeString(), 
-        market: 'SYSTEM', 
-        symbol: 'ERROR', 
-        contract: 'STAKE', 
-        stake: 0, 
-        martingaleStep: 0, 
-        exitDigit: '-', 
-        result: 'Failed', 
-        pnl: 0, 
-        balance: authBalance, 
-        switchInfo: '❌ Minimum stake is $0.35' 
-      });
       toast.error('Minimum stake is $0.35');
       return;
     }
     
     if (!m1Enabled && !m2Enabled) {
-      addLog({ 
-        time: new Date().toLocaleTimeString(), 
-        market: 'SYSTEM', 
-        symbol: 'ERROR', 
-        contract: 'CONFIG', 
-        stake: 0, 
-        martingaleStep: 0, 
-        exitDigit: '-', 
-        result: 'Failed', 
-        pnl: 0, 
-        balance: authBalance, 
-        switchInfo: '❌ Both M1 and M2 are disabled' 
-      });
       toast.error('Both markets are disabled');
       return;
     }
     
     if (m1StrategyEnabled && m1StrategyMode === 'pattern' && m1Pattern.trim().length > 0 && !m1PatternValid) {
-      addLog({ 
-        time: new Date().toLocaleTimeString(), 
-        market: 'SYSTEM', 
-        symbol: 'ERROR', 
-        contract: 'STRATEGY', 
-        stake: 0, 
-        martingaleStep: 0, 
-        exitDigit: '-', 
-        result: 'Failed', 
-        pnl: 0, 
-        balance: authBalance, 
-        switchInfo: '❌ M1 pattern invalid (min 2 chars, E/O only)' 
-      });
-      toast.error('Invalid M1 pattern');
+      toast.error('Invalid M1 pattern (min 2 chars, E/O only)');
       return;
     }
     
     if (m2StrategyEnabled && m2StrategyMode === 'pattern' && m2Pattern.trim().length > 0 && !m2PatternValid) {
-      addLog({ 
-        time: new Date().toLocaleTimeString(), 
-        market: 'SYSTEM', 
-        symbol: 'ERROR', 
-        contract: 'STRATEGY', 
-        stake: 0, 
-        martingaleStep: 0, 
-        exitDigit: '-', 
-        result: 'Failed', 
-        pnl: 0, 
-        balance: authBalance, 
-        switchInfo: '❌ M2 pattern invalid (min 2 chars, E/O only)' 
-      });
-      toast.error('Invalid M2 pattern');
+      toast.error('Invalid M2 pattern (min 2 chars, E/O only)');
       return;
     }
     
-    if (authBalance < baseStake) {
-      addLog({ 
-        time: new Date().toLocaleTimeString(), 
-        market: 'SYSTEM', 
-        symbol: 'ERROR', 
-        contract: 'BALANCE', 
-        stake: 0, 
-        martingaleStep: 0, 
-        exitDigit: '-', 
-        result: 'Failed', 
-        pnl: 0, 
-        balance: authBalance, 
-        switchInfo: `❌ Insufficient balance! Required: $${baseStake.toFixed(2)}, Available: $${authBalance.toFixed(2)}` 
-      });
+    if (balance < baseStake) {
       toast.error(`Insufficient balance! Need $${baseStake.toFixed(2)}`);
       return;
     }
@@ -842,7 +698,6 @@ export default function RamzfxSpeedBot() {
     setCurrentStakeState(baseStake);
     setMartingaleStepState(0);
     patternTradeTakenRef.current = false;
-    combinedTradeTakenRef.current = false;
     setNetProfit(0);
     setWins(0);
     setLosses(0);
@@ -852,7 +707,7 @@ export default function RamzfxSpeedBot() {
     let mStep = 0;
     let inRecovery = false;
     let currentPnl = 0;
-    let currentBalance = authBalance;
+    let currentBalance = balance;
     
     addLog({
       time: new Date().toLocaleTimeString(),
@@ -869,15 +724,11 @@ export default function RamzfxSpeedBot() {
     });
     
     toast.success(`Bot started with stake $${baseStake.toFixed(2)}`);
+    if (voiceEnabled) speak(`Bot started with stake ${baseStake.toFixed(2)} dollars`);
     
     // Main trading loop
     while (runningRef.current && !shouldStopRef.current) {
       try {
-        // Refresh balance periodically
-        await refreshBalance();
-        currentBalance = authBalance;
-        setLocalBalance(currentBalance);
-        
         // Check TP/SL
         if (currentPnl >= parseFloat(takeProfit)) {
           addLog({
@@ -930,60 +781,9 @@ export default function RamzfxSpeedBot() {
             balance: currentBalance,
             switchInfo: `❌ BOT STOPPED - Insufficient funds! Need $${cStake.toFixed(2)}, have $${currentBalance.toFixed(2)}`,
           });
-          toast.error(`Bot stopped - Insufficient funds! Need $${cStake.toFixed(2)}`);
+          toast.error(`Bot stopped - Insufficient funds!`);
           setBotStatus('insufficient_funds');
           break;
-        }
-        
-        // Check connection
-        if (!derivApi.isConnected) {
-          setBotStatus('reconnecting');
-          addLog({
-            time: new Date().toLocaleTimeString(),
-            market: 'SYSTEM',
-            symbol: 'CONNECTION',
-            contract: '-',
-            stake: 0,
-            martingaleStep: 0,
-            exitDigit: '-',
-            result: 'Pending',
-            pnl: currentPnl,
-            balance: currentBalance,
-            switchInfo: `⚠️ Connection lost. Attempting to reconnect...`,
-          });
-          
-          const reconnected = await ensureConnection();
-          if (!reconnected) {
-            addLog({
-              time: new Date().toLocaleTimeString(),
-              market: 'SYSTEM',
-              symbol: 'ERROR',
-              contract: 'CONNECTION',
-              stake: 0,
-              martingaleStep: 0,
-              exitDigit: '-',
-              result: 'Failed',
-              pnl: currentPnl,
-              balance: currentBalance,
-              switchInfo: `❌ Connection lost, bot stopped`,
-            });
-            toast.error('Connection lost! Bot stopped.');
-            break;
-          }
-          setBotStatus(inRecovery ? 'recovery' : 'trading_m1');
-          addLog({
-            time: new Date().toLocaleTimeString(),
-            market: 'SYSTEM',
-            symbol: 'CONNECTION',
-            contract: '-',
-            stake: 0,
-            martingaleStep: 0,
-            exitDigit: '-',
-            result: 'Pending',
-            pnl: currentPnl,
-            balance: currentBalance,
-            switchInfo: `✅ Reconnected successfully!`,
-          });
         }
         
         const mkt: 1 | 2 = inRecovery ? 2 : 1;
@@ -1051,7 +851,6 @@ export default function RamzfxSpeedBot() {
               balance: currentBalance, 
               switchInfo: `🎯 COMBINED PATTERN MATCHED! ${combinedPatterns}` 
             });
-            combinedTradeTakenRef.current = true;
             patternMatched = true;
           } else if (!matched) {
             addLog({
@@ -1071,7 +870,7 @@ export default function RamzfxSpeedBot() {
           }
         }
         
-        // Regular strategy check (if no combined match)
+        // Regular strategy check
         if (!patternMatched && strategyActive) {
           setBotStatus('waiting_pattern');
           let checkFn: () => boolean;
@@ -1127,14 +926,13 @@ export default function RamzfxSpeedBot() {
               balance: currentBalance,
               switchInfo: `✅ Pattern matched! Executing ${cfg.contract} trade...`,
             });
-            patternTradeTakenRef.current = true;
             patternMatched = true;
           } else if (!matched) {
             addLog({
               time: new Date().toLocaleTimeString(),
               market: mkt === 1 ? 'M1' : 'M2',
               symbol: tradeSymbol,
-              contract: 'STRATEGY',
+              contract: 'PATTERN',
               stake: 0,
               martingaleStep: 0,
               exitDigit: '-',
@@ -1244,7 +1042,6 @@ export default function RamzfxSpeedBot() {
           }
           setVhStatus('idle');
           setVhConsecLosses(0);
-          if (strategyActive) patternTradeTakenRef.current = true;
           await delay(turboMode ? 100 : 400);
           continue;
         }
@@ -1282,7 +1079,6 @@ export default function RamzfxSpeedBot() {
           break;
         }
         if (result.shouldBreak) { shouldStopRef.current = true; break; }
-        if (strategyActive) patternTradeTakenRef.current = true;
         await delay(turboMode ? 100 : 400);
         
       } catch (err: any) {
@@ -1306,34 +1102,38 @@ export default function RamzfxSpeedBot() {
     
     setIsRunning(false);
     runningRef.current = false;
-    if (shouldStopRef.current && botStatus !== 'insufficient_funds') {
-      setBotStatus('idle');
-      addLog({
-        time: new Date().toLocaleTimeString(),
-        market: 'SYSTEM',
-        symbol: 'BOT',
-        contract: 'STOP',
-        stake: 0,
-        martingaleStep: 0,
-        exitDigit: '-',
-        result: 'Pending',
-        pnl: netProfit,
-        balance: currentBalance,
-        switchInfo: `🛑 Bot stopped. Final P/L: $${netProfit.toFixed(2)} | Wins: ${wins} | Losses: ${losses}`,
-      });
-      toast.info(`Bot stopped. Final P/L: $${netProfit.toFixed(2)}`);
-    }
+    setBotStatus('idle');
+    
+    addLog({
+      time: new Date().toLocaleTimeString(),
+      market: 'SYSTEM',
+      symbol: 'BOT',
+      contract: 'STOP',
+      stake: 0,
+      martingaleStep: 0,
+      exitDigit: '-',
+      result: 'Pending',
+      pnl: netProfit,
+      balance: balance,
+      switchInfo: `🛑 Bot stopped. Final P/L: $${netProfit.toFixed(2)} | Wins: ${wins} | Losses: ${losses}`,
+    });
+    
+    toast.info(`Bot stopped. Final P/L: $${netProfit.toFixed(2)}`);
+    if (voiceEnabled) speak(`Bot stopped. Final profit or loss ${netProfit.toFixed(2)} dollars`);
+    
     shouldStopRef.current = false;
-  }, [isAuthorized, isRunning, stake, m1Enabled, m2Enabled, m1Contract, m2Contract, m1Barrier, m2Barrier, m1Symbol, m2Symbol, m1HookEnabled, m2HookEnabled, m1VirtualLossCount, m2VirtualLossCount, m1RealCount, m2RealCount, m1StrategyEnabled, m2StrategyEnabled, m1StrategyMode, m2StrategyMode, m1PatternValid, m2PatternValid, m1CombinedEnabled, m2CombinedEnabled, m1CombinedPatterns, m2CombinedPatterns, martingaleOn, martingaleMultiplier, martingaleMaxSteps, takeProfit, stopLoss, turboMode, authBalance, addLog, ensureConnection, checkPatternMatch, checkDigitCondition, checkCombinedForSymbol, executeRealTrade, waitForPattern, cleanM1Pattern, cleanM2Pattern, refreshBalance, netProfit, wins, losses, botStatus]);
+  }, [isRunning, stake, balance, m1Enabled, m2Enabled, m1Contract, m2Contract, m1Barrier, m2Barrier, m1Symbol, m2Symbol, 
+      m1HookEnabled, m2HookEnabled, m1VirtualLossCount, m2VirtualLossCount, m1RealCount, m2RealCount, 
+      m1StrategyEnabled, m2StrategyEnabled, m1StrategyMode, m2StrategyMode, m1PatternValid, m2PatternValid,
+      m1CombinedEnabled, m2CombinedEnabled, m1CombinedPatterns, m2CombinedPatterns,
+      martingaleOn, martingaleMultiplier, martingaleMaxSteps, takeProfit, stopLoss, turboMode,
+      checkPatternMatch, checkDigitCondition, checkCombinedForSymbol, executeRealTrade, waitForPattern,
+      cleanM1Pattern, cleanM2Pattern, addLog, voiceEnabled, speak, netProfit, wins, losses]);
   
   const stopBot = useCallback(() => {
     shouldStopRef.current = true;
     runningRef.current = false;
     setIsRunning(false);
-    const currentStatus = botStatus;
-    setBotStatus('idle');
-    patternTradeTakenRef.current = false;
-    combinedTradeTakenRef.current = false;
     toast.info('🛑 Bot stopped manually');
     
     addLog({
@@ -1346,20 +1146,21 @@ export default function RamzfxSpeedBot() {
       exitDigit: '-',
       result: 'Pending',
       pnl: netProfit,
-      balance: localBalance,
-      switchInfo: `🛑 Bot manually stopped. Final P/L: $${netProfit.toFixed(2)} | Wins: ${wins} | Losses: ${losses}`,
+      balance: balance,
+      switchInfo: `🛑 Bot manually stopped. Final P/L: $${netProfit.toFixed(2)}`,
     });
-  }, [addLog, netProfit, localBalance, botStatus, wins, losses]);
+  }, [addLog, netProfit, balance]);
   
   const winRate = wins + losses > 0 ? ((wins / (wins + losses)) * 100).toFixed(1) : '0.0';
+  
   const statusConfig: Record<BotStatus, { icon: string; label: string; color: string }> = {
-    idle: { icon: '⚪', label: 'IDLE', color: 'text-muted-foreground' },
-    trading_m1: { icon: '🟢', label: 'TRADING M1', color: 'text-profit' },
-    recovery: { icon: '🟣', label: 'RECOVERY MODE', color: 'text-purple-400' },
-    waiting_pattern: { icon: '🟡', label: 'WAITING PATTERN', color: 'text-warning' },
-    pattern_matched: { icon: '✅', label: 'PATTERN MATCHED', color: 'text-profit' },
-    virtual_hook: { icon: '🎣', label: 'VIRTUAL HOOK', color: 'text-primary' },
-    reconnecting: { icon: '🔄', label: 'RECONNECTING...', color: 'text-orange-400' },
+    idle: { icon: '⚪', label: 'IDLE', color: 'text-slate-400' },
+    trading_m1: { icon: '🟢', label: 'TRADING M1', color: 'text-emerald-400' },
+    recovery: { icon: '🟣', label: 'RECOVERY M2', color: 'text-purple-400' },
+    waiting_pattern: { icon: '🟡', label: 'WAITING PATTERN', color: 'text-amber-400' },
+    pattern_matched: { icon: '✅', label: 'PATTERN MATCHED', color: 'text-emerald-400' },
+    virtual_hook: { icon: '🎣', label: 'VIRTUAL HOOK', color: 'text-cyan-400' },
+    reconnecting: { icon: '🔄', label: 'RECONNECTING', color: 'text-orange-400' },
     insufficient_funds: { icon: '💰', label: 'INSUFFICIENT FUNDS', color: 'text-rose-400' },
   };
   const status = statusConfig[botStatus];
@@ -1375,20 +1176,34 @@ export default function RamzfxSpeedBot() {
           <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 mb-6">
             <div className="flex items-center gap-3">
               <div className="p-2 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl">
-                <Sparkles className="w-5 h-5 md:w-6 md:h-6 text-white" />
+                <Zap className="w-5 h-5 md:w-6 md:h-6 text-white" />
               </div>
               <div>
                 <h1 className="text-xl md:text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">Ramzfx Speed Bot</h1>
-                <p className="text-xs text-slate-400">Dual Market Trading System</p>
+                <p className="text-xs text-slate-400">Dual Market Trading System with Virtual Hook</p>
               </div>
             </div>
             
-            <div className="flex items-center gap-3">
-              <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium ${derivApi.isConnected ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'}`}>
-                {derivApi.isConnected ? <Wifi className="w-3.5 h-3.5" /> : <WifiOff className="w-3.5 h-3.5" />}
-                <span>{derivApi.isConnected ? 'Connected' : 'Disconnected'}</span>
+            <div className="flex items-center gap-3 flex-wrap">
+              <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium ${isConnected ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'}`}>
+                {isConnected ? <Wifi className="w-3.5 h-3.5" /> : <WifiOff className="w-3.5 h-3.5" />}
+                <span>{isConnected ? 'Connected' : 'Disconnected'}</span>
               </div>
-              <Badge className={`${status.color} text-xs px-3 py-1 bg-white/10`}>{status.icon} {status.label}</Badge>
+              
+              <button
+                onClick={() => setVoiceEnabled(!voiceEnabled)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
+                  voiceEnabled ? 'bg-purple-500/20 text-purple-400' : 'bg-slate-800 text-slate-400'
+                }`}
+              >
+                {voiceEnabled ? <Volume2 className="w-3.5 h-3.5" /> : <VolumeX className="w-3.5 h-3.5" />}
+                {voiceEnabled ? 'Voice ON' : 'Voice OFF'}
+              </button>
+              
+              <Badge className={`${status.color} text-xs px-3 py-1 bg-white/10`}>
+                {status.icon} {status.label}
+              </Badge>
+              
               {isRunning && (
                 <Badge variant="outline" className="text-xs text-amber-400 animate-pulse">
                   P/L: ${netProfit.toFixed(2)}
@@ -1401,426 +1216,451 @@ export default function RamzfxSpeedBot() {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
             
             {/* Market 1 - Primary */}
-            <div className="bg-gradient-to-br from-slate-900/90 to-slate-900/50 backdrop-blur-sm border border-blue-500/30 rounded-xl p-4">
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center">
-                    <Home className="w-5 h-5 text-white" />
+            <div className="bg-gradient-to-br from-slate-900/90 to-slate-900/50 backdrop-blur-sm border border-blue-500/30 rounded-xl overflow-hidden">
+              <div className="p-4">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center">
+                      <Home className="w-5 h-5 text-white" />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-bold text-blue-400">PRIMARY MARKET (M1)</h3>
+                      <p className="text-xs text-slate-400">Main Trading Channel</p>
+                    </div>
                   </div>
-                  <div>
-                    <h3 className="text-sm font-bold text-blue-400">PRIMARY MARKET (M1)</h3>
-                    <p className="text-xs text-slate-400">Main Trading Channel</p>
-                  </div>
-                </div>
-                <Switch checked={m1Enabled} onCheckedChange={setM1Enabled} disabled={isRunning} />
-              </div>
-              
-              <div className="space-y-3">
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-xs text-slate-400 mb-1 block">Symbol</label>
-                    <Select value={m1Symbol} onValueChange={setM1Symbol} disabled={isRunning}>
-                      <SelectTrigger className="bg-slate-800/50">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {ALL_MARKETS.map(m => (
-                          <SelectItem key={m.symbol} value={m.symbol}>
-                            {m.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <label className="text-xs text-slate-400 mb-1 block">Contract Type</label>
-                    <Select value={m1Contract} onValueChange={setM1Contract} disabled={isRunning}>
-                      <SelectTrigger className="bg-slate-800/50">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {CONTRACT_TYPES.map(c => (
-                          <SelectItem key={c} value={c}>{c}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
+                  <Switch checked={m1Enabled} onCheckedChange={setM1Enabled} disabled={isRunning} />
                 </div>
                 
-                {needsBarrier(m1Contract) && (
-                  <div>
-                    <label className="text-xs text-slate-400 mb-1 block">Barrier (0-9)</label>
-                    <Input 
-                      type="number" 
-                      min="0" 
-                      max="9" 
-                      value={m1Barrier} 
-                      onChange={e => setM1Barrier(e.target.value)} 
-                      className="bg-slate-800/50"
-                      disabled={isRunning} 
-                    />
+                <div className="space-y-3">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs text-slate-400 mb-1 block">Symbol</label>
+                      <Select value={m1Symbol} onValueChange={setM1Symbol} disabled={isRunning}>
+                        <SelectTrigger className="bg-slate-800/50 h-9">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {ALL_MARKETS.map(m => (
+                            <SelectItem key={m.symbol} value={m.symbol}>
+                              {m.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <label className="text-xs text-slate-400 mb-1 block">Contract Type</label>
+                      <Select value={m1Contract} onValueChange={setM1Contract} disabled={isRunning}>
+                        <SelectTrigger className="bg-slate-800/50 h-9">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {CONTRACT_TYPES.map(c => (
+                            <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </div>
-                )}
-                
-                <button 
-                  onClick={() => setExpandedM1(!expandedM1)} 
-                  className="w-full text-xs text-slate-400 hover:text-blue-400 flex items-center justify-center gap-2 py-2"
-                >
-                  {expandedM1 ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                  {expandedM1 ? 'Show Less Options' : 'Show More Options'}
-                </button>
-                
-                {expandedM1 && (
-                  <div className="space-y-3 pt-3 border-t border-blue-500/20">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-slate-300">Virtual Hook Strategy</span>
-                      <Switch checked={m1HookEnabled} onCheckedChange={setM1HookEnabled} disabled={isRunning} />
+                  
+                  {needsBarrier(m1Contract) && (
+                    <div>
+                      <label className="text-xs text-slate-400 mb-1 block">Barrier (0-9)</label>
+                      <Input 
+                        type="number" 
+                        min="0" 
+                        max="9" 
+                        value={m1Barrier} 
+                        onChange={e => setM1Barrier(e.target.value)} 
+                        className="bg-slate-800/50 h-9"
+                        disabled={isRunning} 
+                      />
                     </div>
-                    
-                    {m1HookEnabled && (
-                      <div className="grid grid-cols-2 gap-3">
-                        <div>
-                          <label className="text-xs text-slate-400 mb-1 block">Required Losses</label>
-                          <Input 
-                            type="number" 
-                            value={m1VirtualLossCount} 
-                            onChange={e => setM1VirtualLossCount(e.target.value)} 
-                            className="bg-slate-800/50"
-                            disabled={isRunning}
-                          />
+                  )}
+                  
+                  <button 
+                    onClick={() => setExpandedM1(!expandedM1)} 
+                    className="w-full text-xs text-slate-400 hover:text-blue-400 flex items-center justify-center gap-2 py-2"
+                  >
+                    {expandedM1 ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                    {expandedM1 ? 'Show Less Options' : 'Show More Options'}
+                  </button>
+                  
+                  {expandedM1 && (
+                    <div className="space-y-3 pt-3 border-t border-blue-500/20">
+                      {/* Virtual Hook */}
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Anchor className="w-4 h-4 text-cyan-400" />
+                          <span className="text-sm text-slate-300">Virtual Hook Strategy</span>
                         </div>
-                        <div>
-                          <label className="text-xs text-slate-400 mb-1 block">Real Trades After</label>
-                          <Input 
-                            type="number" 
-                            value={m1RealCount} 
-                            onChange={e => setM1RealCount(e.target.value)} 
-                            className="bg-slate-800/50"
-                            disabled={isRunning}
-                          />
-                        </div>
+                        <Switch checked={m1HookEnabled} onCheckedChange={setM1HookEnabled} disabled={isRunning} />
                       </div>
-                    )}
-                    
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-slate-300">Combined Strategy</span>
-                      <Switch checked={m1CombinedEnabled} onCheckedChange={setM1CombinedEnabled} disabled={isRunning} />
-                    </div>
-                    
-                    {m1CombinedEnabled && (
-                      <div>
-                        <label className="text-xs text-slate-400 mb-1 block">Patterns (comma separated)</label>
-                        <Textarea 
-                          placeholder="Examples: 1,5,11,112, E,E, OO" 
-                          value={m1CombinedPatterns} 
-                          onChange={e => setM1CombinedPatterns(e.target.value)} 
-                          className="h-20 text-xs font-mono bg-slate-800/50"
-                          disabled={isRunning}
-                        />
-                      </div>
-                    )}
-                    
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-slate-300">Pattern Strategy</span>
-                      <Switch checked={m1StrategyEnabled} onCheckedChange={setM1StrategyEnabled} disabled={isRunning} />
-                    </div>
-                    
-                    {m1StrategyEnabled && (
-                      <div className="space-y-3">
-                        <div className="flex gap-2">
-                          <Button 
-                            variant={m1StrategyMode === 'pattern' ? 'default' : 'outline'} 
-                            className="flex-1"
-                            onClick={() => setM1StrategyMode('pattern')}
-                            disabled={isRunning}
-                          >
-                            Pattern (E/O)
-                          </Button>
-                          <Button 
-                            variant={m1StrategyMode === 'digit' ? 'default' : 'outline'} 
-                            className="flex-1"
-                            onClick={() => setM1StrategyMode('digit')}
-                            disabled={isRunning}
-                          >
-                            Digit Condition
-                          </Button>
-                        </div>
-                        
-                        {m1StrategyMode === 'pattern' && (
+                      
+                      {m1HookEnabled && (
+                        <div className="grid grid-cols-2 gap-3">
                           <div>
-                            <label className="text-xs text-slate-400 mb-1 block">Pattern (E/O only, min 2 chars)</label>
+                            <label className="text-xs text-slate-400 mb-1 block">Required Losses</label>
                             <Input 
-                              placeholder="Example: EEO" 
-                              value={m1Pattern} 
-                              onChange={e => setM1Pattern(e.target.value)} 
-                              className="bg-slate-800/50 font-mono"
+                              type="number" 
+                              value={m1VirtualLossCount} 
+                              onChange={e => setM1VirtualLossCount(e.target.value)} 
+                              className="bg-slate-800/50 h-8"
                               disabled={isRunning}
                             />
-                            {m1Pattern && m1PatternValid === false && (
-                              <p className="text-xs text-rose-400 mt-1">Invalid pattern! Use only E and O</p>
-                            )}
                           </div>
-                        )}
-                        
-                        {m1StrategyMode === 'digit' && (
-                          <div className="grid grid-cols-3 gap-2">
-                            <div>
-                              <label className="text-xs text-slate-400 mb-1 block">Condition</label>
-                              <Select value={m1DigitCondition} onValueChange={setM1DigitCondition} disabled={isRunning}>
-                                <SelectTrigger className="bg-slate-800/50">
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="==">=</SelectItem>
-                                  <SelectItem value=">">&gt;</SelectItem>
-                                  <SelectItem value="<">&lt;</SelectItem>
-                                  <SelectItem value=">=">&gt;=</SelectItem>
-                                  <SelectItem value="<=">&lt;=</SelectItem>
-                                </SelectContent>
-                              </Select>
-                            </div>
-                            <div>
-                              <label className="text-xs text-slate-400 mb-1 block">Value</label>
-                              <Input 
-                                type="number" 
-                                min="0" 
-                                max="9" 
-                                value={m1DigitCompare} 
-                                onChange={e => setM1DigitCompare(e.target.value)} 
-                                className="bg-slate-800/50"
-                                disabled={isRunning}
-                              />
-                            </div>
-                            <div>
-                              <label className="text-xs text-slate-400 mb-1 block">Window</label>
-                              <Input 
-                                type="number" 
-                                min="1" 
-                                max="10" 
-                                value={m1DigitWindow} 
-                                onChange={e => setM1DigitWindow(e.target.value)} 
-                                className="bg-slate-800/50"
-                                disabled={isRunning}
-                              />
-                            </div>
+                          <div>
+                            <label className="text-xs text-slate-400 mb-1 block">Real Trades After</label>
+                            <Input 
+                              type="number" 
+                              value={m1RealCount} 
+                              onChange={e => setM1RealCount(e.target.value)} 
+                              className="bg-slate-800/50 h-8"
+                              disabled={isRunning}
+                            />
                           </div>
-                        )}
+                        </div>
+                      )}
+                      
+                      {/* Combined Strategy */}
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Combine className="w-4 h-4 text-green-400" />
+                          <span className="text-sm text-slate-300">Combined Strategy</span>
+                        </div>
+                        <Switch checked={m1CombinedEnabled} onCheckedChange={setM1CombinedEnabled} disabled={isRunning} />
                       </div>
-                    )}
-                  </div>
-                )}
+                      
+                      {m1CombinedEnabled && (
+                        <div>
+                          <label className="text-xs text-slate-400 mb-1 block">Patterns (comma separated)</label>
+                          <Textarea 
+                            placeholder="Examples: 1,5,11,112, E,E, OO" 
+                            value={m1CombinedPatterns} 
+                            onChange={e => setM1CombinedPatterns(e.target.value)} 
+                            className="h-20 text-xs font-mono bg-slate-800/50"
+                            disabled={isRunning}
+                          />
+                        </div>
+                      )}
+                      
+                      {/* Pattern Strategy */}
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Target className="w-4 h-4 text-amber-400" />
+                          <span className="text-sm text-slate-300">Pattern Strategy</span>
+                        </div>
+                        <Switch checked={m1StrategyEnabled} onCheckedChange={setM1StrategyEnabled} disabled={isRunning} />
+                      </div>
+                      
+                      {m1StrategyEnabled && (
+                        <div className="space-y-3">
+                          <div className="flex gap-2">
+                            <Button 
+                              variant={m1StrategyMode === 'pattern' ? 'default' : 'outline'} 
+                              className="flex-1 h-8 text-xs"
+                              onClick={() => setM1StrategyMode('pattern')}
+                              disabled={isRunning}
+                            >
+                              Pattern (E/O)
+                            </Button>
+                            <Button 
+                              variant={m1StrategyMode === 'digit' ? 'default' : 'outline'} 
+                              className="flex-1 h-8 text-xs"
+                              onClick={() => setM1StrategyMode('digit')}
+                              disabled={isRunning}
+                            >
+                              Digit Condition
+                            </Button>
+                          </div>
+                          
+                          {m1StrategyMode === 'pattern' && (
+                            <div>
+                              <label className="text-xs text-slate-400 mb-1 block">Pattern (E/O only, min 2 chars)</label>
+                              <Input 
+                                placeholder="Example: EEO" 
+                                value={m1Pattern} 
+                                onChange={e => setM1Pattern(e.target.value)} 
+                                className="bg-slate-800/50 font-mono h-8"
+                                disabled={isRunning}
+                              />
+                              {m1Pattern && m1PatternValid === false && (
+                                <p className="text-xs text-rose-400 mt-1">Invalid pattern! Use only E and O</p>
+                              )}
+                            </div>
+                          )}
+                          
+                          {m1StrategyMode === 'digit' && (
+                            <div className="grid grid-cols-3 gap-2">
+                              <div>
+                                <label className="text-xs text-slate-400 mb-1 block">Condition</label>
+                                <Select value={m1DigitCondition} onValueChange={setM1DigitCondition} disabled={isRunning}>
+                                  <SelectTrigger className="bg-slate-800/50 h-8">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="==">=</SelectItem>
+                                    <SelectItem value=">">&gt;</SelectItem>
+                                    <SelectItem value="<">&lt;</SelectItem>
+                                    <SelectItem value=">=">&gt;=</SelectItem>
+                                    <SelectItem value="<=">&lt;=</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                              <div>
+                                <label className="text-xs text-slate-400 mb-1 block">Value</label>
+                                <Input 
+                                  type="number" 
+                                  min="0" 
+                                  max="9" 
+                                  value={m1DigitCompare} 
+                                  onChange={e => setM1DigitCompare(e.target.value)} 
+                                  className="bg-slate-800/50 h-8"
+                                  disabled={isRunning}
+                                />
+                              </div>
+                              <div>
+                                <label className="text-xs text-slate-400 mb-1 block">Window</label>
+                                <Input 
+                                  type="number" 
+                                  min="1" 
+                                  max="10" 
+                                  value={m1DigitWindow} 
+                                  onChange={e => setM1DigitWindow(e.target.value)} 
+                                  className="bg-slate-800/50 h-8"
+                                  disabled={isRunning}
+                                />
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
             
             {/* Market 2 - Recovery */}
-            <div className="bg-gradient-to-br from-slate-900/90 to-slate-900/50 backdrop-blur-sm border border-purple-500/30 rounded-xl p-4">
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
-                    <RefreshCw className="w-5 h-5 text-white" />
+            <div className="bg-gradient-to-br from-slate-900/90 to-slate-900/50 backdrop-blur-sm border border-purple-500/30 rounded-xl overflow-hidden">
+              <div className="p-4">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
+                      <RefreshCw className="w-5 h-5 text-white" />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-bold text-purple-400">RECOVERY MARKET (M2)</h3>
+                      <p className="text-xs text-slate-400">Loss Recovery Channel</p>
+                    </div>
                   </div>
-                  <div>
-                    <h3 className="text-sm font-bold text-purple-400">RECOVERY MARKET (M2)</h3>
-                    <p className="text-xs text-slate-400">Loss Recovery Channel</p>
-                  </div>
-                </div>
-                <Switch checked={m2Enabled} onCheckedChange={setM2Enabled} disabled={isRunning} />
-              </div>
-              
-              <div className="space-y-3">
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-xs text-slate-400 mb-1 block">Symbol</label>
-                    <Select value={m2Symbol} onValueChange={setM2Symbol} disabled={isRunning}>
-                      <SelectTrigger className="bg-slate-800/50">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {ALL_MARKETS.map(m => (
-                          <SelectItem key={m.symbol} value={m.symbol}>
-                            {m.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <label className="text-xs text-slate-400 mb-1 block">Contract Type</label>
-                    <Select value={m2Contract} onValueChange={setM2Contract} disabled={isRunning}>
-                      <SelectTrigger className="bg-slate-800/50">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {CONTRACT_TYPES.map(c => (
-                          <SelectItem key={c} value={c}>{c}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
+                  <Switch checked={m2Enabled} onCheckedChange={setM2Enabled} disabled={isRunning} />
                 </div>
                 
-                {needsBarrier(m2Contract) && (
-                  <div>
-                    <label className="text-xs text-slate-400 mb-1 block">Barrier (0-9)</label>
-                    <Input 
-                      type="number" 
-                      min="0" 
-                      max="9" 
-                      value={m2Barrier} 
-                      onChange={e => setM2Barrier(e.target.value)} 
-                      className="bg-slate-800/50"
-                      disabled={isRunning} 
-                    />
+                <div className="space-y-3">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs text-slate-400 mb-1 block">Symbol</label>
+                      <Select value={m2Symbol} onValueChange={setM2Symbol} disabled={isRunning}>
+                        <SelectTrigger className="bg-slate-800/50 h-9">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {ALL_MARKETS.map(m => (
+                            <SelectItem key={m.symbol} value={m.symbol}>
+                              {m.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <label className="text-xs text-slate-400 mb-1 block">Contract Type</label>
+                      <Select value={m2Contract} onValueChange={setM2Contract} disabled={isRunning}>
+                        <SelectTrigger className="bg-slate-800/50 h-9">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {CONTRACT_TYPES.map(c => (
+                            <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </div>
-                )}
-                
-                <button 
-                  onClick={() => setExpandedM2(!expandedM2)} 
-                  className="w-full text-xs text-slate-400 hover:text-purple-400 flex items-center justify-center gap-2 py-2"
-                >
-                  {expandedM2 ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                  {expandedM2 ? 'Show Less Options' : 'Show More Options'}
-                </button>
-                
-                {expandedM2 && (
-                  <div className="space-y-3 pt-3 border-t border-purple-500/20">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-slate-300">Virtual Hook Strategy</span>
-                      <Switch checked={m2HookEnabled} onCheckedChange={setM2HookEnabled} disabled={isRunning} />
+                  
+                  {needsBarrier(m2Contract) && (
+                    <div>
+                      <label className="text-xs text-slate-400 mb-1 block">Barrier (0-9)</label>
+                      <Input 
+                        type="number" 
+                        min="0" 
+                        max="9" 
+                        value={m2Barrier} 
+                        onChange={e => setM2Barrier(e.target.value)} 
+                        className="bg-slate-800/50 h-9"
+                        disabled={isRunning} 
+                      />
                     </div>
-                    
-                    {m2HookEnabled && (
-                      <div className="grid grid-cols-2 gap-3">
-                        <div>
-                          <label className="text-xs text-slate-400 mb-1 block">Required Losses</label>
-                          <Input 
-                            type="number" 
-                            value={m2VirtualLossCount} 
-                            onChange={e => setM2VirtualLossCount(e.target.value)} 
-                            className="bg-slate-800/50"
-                            disabled={isRunning}
-                          />
+                  )}
+                  
+                  <button 
+                    onClick={() => setExpandedM2(!expandedM2)} 
+                    className="w-full text-xs text-slate-400 hover:text-purple-400 flex items-center justify-center gap-2 py-2"
+                  >
+                    {expandedM2 ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                    {expandedM2 ? 'Show Less Options' : 'Show More Options'}
+                  </button>
+                  
+                  {expandedM2 && (
+                    <div className="space-y-3 pt-3 border-t border-purple-500/20">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Anchor className="w-4 h-4 text-cyan-400" />
+                          <span className="text-sm text-slate-300">Virtual Hook Strategy</span>
                         </div>
-                        <div>
-                          <label className="text-xs text-slate-400 mb-1 block">Real Trades After</label>
-                          <Input 
-                            type="number" 
-                            value={m2RealCount} 
-                            onChange={e => setM2RealCount(e.target.value)} 
-                            className="bg-slate-800/50"
-                            disabled={isRunning}
-                          />
-                        </div>
+                        <Switch checked={m2HookEnabled} onCheckedChange={setM2HookEnabled} disabled={isRunning} />
                       </div>
-                    )}
-                    
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-slate-300">Combined Strategy</span>
-                      <Switch checked={m2CombinedEnabled} onCheckedChange={setM2CombinedEnabled} disabled={isRunning} />
-                    </div>
-                    
-                    {m2CombinedEnabled && (
-                      <div>
-                        <label className="text-xs text-slate-400 mb-1 block">Patterns (comma separated)</label>
-                        <Textarea 
-                          placeholder="Examples: 1,5,11,112, E,E, OO" 
-                          value={m2CombinedPatterns} 
-                          onChange={e => setM2CombinedPatterns(e.target.value)} 
-                          className="h-20 text-xs font-mono bg-slate-800/50"
-                          disabled={isRunning}
-                        />
-                      </div>
-                    )}
-                    
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-slate-300">Pattern Strategy</span>
-                      <Switch checked={m2StrategyEnabled} onCheckedChange={setM2StrategyEnabled} disabled={isRunning} />
-                    </div>
-                    
-                    {m2StrategyEnabled && (
-                      <div className="space-y-3">
-                        <div className="flex gap-2">
-                          <Button 
-                            variant={m2StrategyMode === 'pattern' ? 'default' : 'outline'} 
-                            className="flex-1"
-                            onClick={() => setM2StrategyMode('pattern')}
-                            disabled={isRunning}
-                          >
-                            Pattern (E/O)
-                          </Button>
-                          <Button 
-                            variant={m2StrategyMode === 'digit' ? 'default' : 'outline'} 
-                            className="flex-1"
-                            onClick={() => setM2StrategyMode('digit')}
-                            disabled={isRunning}
-                          >
-                            Digit Condition
-                          </Button>
-                        </div>
-                        
-                        {m2StrategyMode === 'pattern' && (
+                      
+                      {m2HookEnabled && (
+                        <div className="grid grid-cols-2 gap-3">
                           <div>
-                            <label className="text-xs text-slate-400 mb-1 block">Pattern (E/O only, min 2 chars)</label>
+                            <label className="text-xs text-slate-400 mb-1 block">Required Losses</label>
                             <Input 
-                              placeholder="Example: EEO" 
-                              value={m2Pattern} 
-                              onChange={e => setM2Pattern(e.target.value)} 
-                              className="bg-slate-800/50 font-mono"
+                              type="number" 
+                              value={m2VirtualLossCount} 
+                              onChange={e => setM2VirtualLossCount(e.target.value)} 
+                              className="bg-slate-800/50 h-8"
                               disabled={isRunning}
                             />
-                            {m2Pattern && m2PatternValid === false && (
-                              <p className="text-xs text-rose-400 mt-1">Invalid pattern! Use only E and O</p>
-                            )}
                           </div>
-                        )}
-                        
-                        {m2StrategyMode === 'digit' && (
-                          <div className="grid grid-cols-3 gap-2">
-                            <div>
-                              <label className="text-xs text-slate-400 mb-1 block">Condition</label>
-                              <Select value={m2DigitCondition} onValueChange={setM2DigitCondition} disabled={isRunning}>
-                                <SelectTrigger className="bg-slate-800/50">
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="==">=</SelectItem>
-                                  <SelectItem value=">">&gt;</SelectItem>
-                                  <SelectItem value="<">&lt;</SelectItem>
-                                  <SelectItem value=">=">&gt;=</SelectItem>
-                                  <SelectItem value="<=">&lt;=</SelectItem>
-                                </SelectContent>
-                              </Select>
-                            </div>
-                            <div>
-                              <label className="text-xs text-slate-400 mb-1 block">Value</label>
-                              <Input 
-                                type="number" 
-                                min="0" 
-                                max="9" 
-                                value={m2DigitCompare} 
-                                onChange={e => setM2DigitCompare(e.target.value)} 
-                                className="bg-slate-800/50"
-                                disabled={isRunning}
-                              />
-                            </div>
-                            <div>
-                              <label className="text-xs text-slate-400 mb-1 block">Window</label>
-                              <Input 
-                                type="number" 
-                                min="1" 
-                                max="10" 
-                                value={m2DigitWindow} 
-                                onChange={e => setM2DigitWindow(e.target.value)} 
-                                className="bg-slate-800/50"
-                                disabled={isRunning}
-                              />
-                            </div>
+                          <div>
+                            <label className="text-xs text-slate-400 mb-1 block">Real Trades After</label>
+                            <Input 
+                              type="number" 
+                              value={m2RealCount} 
+                              onChange={e => setM2RealCount(e.target.value)} 
+                              className="bg-slate-800/50 h-8"
+                              disabled={isRunning}
+                            />
                           </div>
-                        )}
+                        </div>
+                      )}
+                      
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Combine className="w-4 h-4 text-green-400" />
+                          <span className="text-sm text-slate-300">Combined Strategy</span>
+                        </div>
+                        <Switch checked={m2CombinedEnabled} onCheckedChange={setM2CombinedEnabled} disabled={isRunning} />
                       </div>
-                    )}
-                  </div>
-                )}
+                      
+                      {m2CombinedEnabled && (
+                        <div>
+                          <label className="text-xs text-slate-400 mb-1 block">Patterns (comma separated)</label>
+                          <Textarea 
+                            placeholder="Examples: 1,5,11,112, E,E, OO" 
+                            value={m2CombinedPatterns} 
+                            onChange={e => setM2CombinedPatterns(e.target.value)} 
+                            className="h-20 text-xs font-mono bg-slate-800/50"
+                            disabled={isRunning}
+                          />
+                        </div>
+                      )}
+                      
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Target className="w-4 h-4 text-amber-400" />
+                          <span className="text-sm text-slate-300">Pattern Strategy</span>
+                        </div>
+                        <Switch checked={m2StrategyEnabled} onCheckedChange={setM2StrategyEnabled} disabled={isRunning} />
+                      </div>
+                      
+                      {m2StrategyEnabled && (
+                        <div className="space-y-3">
+                          <div className="flex gap-2">
+                            <Button 
+                              variant={m2StrategyMode === 'pattern' ? 'default' : 'outline'} 
+                              className="flex-1 h-8 text-xs"
+                              onClick={() => setM2StrategyMode('pattern')}
+                              disabled={isRunning}
+                            >
+                              Pattern (E/O)
+                            </Button>
+                            <Button 
+                              variant={m2StrategyMode === 'digit' ? 'default' : 'outline'} 
+                              className="flex-1 h-8 text-xs"
+                              onClick={() => setM2StrategyMode('digit')}
+                              disabled={isRunning}
+                            >
+                              Digit Condition
+                            </Button>
+                          </div>
+                          
+                          {m2StrategyMode === 'pattern' && (
+                            <div>
+                              <label className="text-xs text-slate-400 mb-1 block">Pattern (E/O only, min 2 chars)</label>
+                              <Input 
+                                placeholder="Example: EEO" 
+                                value={m2Pattern} 
+                                onChange={e => setM2Pattern(e.target.value)} 
+                                className="bg-slate-800/50 font-mono h-8"
+                                disabled={isRunning}
+                              />
+                              {m2Pattern && m2PatternValid === false && (
+                                <p className="text-xs text-rose-400 mt-1">Invalid pattern! Use only E and O</p>
+                              )}
+                            </div>
+                          )}
+                          
+                          {m2StrategyMode === 'digit' && (
+                            <div className="grid grid-cols-3 gap-2">
+                              <div>
+                                <label className="text-xs text-slate-400 mb-1 block">Condition</label>
+                                <Select value={m2DigitCondition} onValueChange={setM2DigitCondition} disabled={isRunning}>
+                                  <SelectTrigger className="bg-slate-800/50 h-8">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="==">=</SelectItem>
+                                    <SelectItem value=">">&gt;</SelectItem>
+                                    <SelectItem value="<">&lt;</SelectItem>
+                                    <SelectItem value=">=">&gt;=</SelectItem>
+                                    <SelectItem value="<=">&lt;=</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                              <div>
+                                <label className="text-xs text-slate-400 mb-1 block">Value</label>
+                                <Input 
+                                  type="number" 
+                                  min="0" 
+                                  max="9" 
+                                  value={m2DigitCompare} 
+                                  onChange={e => setM2DigitCompare(e.target.value)} 
+                                  className="bg-slate-800/50 h-8"
+                                  disabled={isRunning}
+                                />
+                              </div>
+                              <div>
+                                <label className="text-xs text-slate-400 mb-1 block">Window</label>
+                                <Input 
+                                  type="number" 
+                                  min="1" 
+                                  max="10" 
+                                  value={m2DigitWindow} 
+                                  onChange={e => setM2DigitWindow(e.target.value)} 
+                                  className="bg-slate-800/50 h-8"
+                                  disabled={isRunning}
+                                />
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           </div>
@@ -1842,7 +1682,7 @@ export default function RamzfxSpeedBot() {
                   value={stake} 
                   onChange={e => setStake(e.target.value)} 
                   disabled={isRunning}
-                  className="bg-slate-800/50"
+                  className="bg-slate-800/50 h-10"
                 />
               </div>
               
@@ -1850,10 +1690,11 @@ export default function RamzfxSpeedBot() {
                 <label className="text-xs text-slate-400 mb-1 block">Take Profit ($)</label>
                 <Input 
                   type="number" 
+                  step="1" 
                   value={takeProfit} 
                   onChange={e => setTakeProfit(e.target.value)} 
                   disabled={isRunning}
-                  className="bg-slate-800/50"
+                  className="bg-slate-800/50 h-10"
                 />
               </div>
               
@@ -1861,22 +1702,23 @@ export default function RamzfxSpeedBot() {
                 <label className="text-xs text-slate-400 mb-1 block">Stop Loss ($)</label>
                 <Input 
                   type="number" 
+                  step="1" 
                   value={stopLoss} 
                   onChange={e => setStopLoss(e.target.value)} 
                   disabled={isRunning}
-                  className="bg-slate-800/50"
+                  className="bg-slate-800/50 h-10"
                 />
               </div>
               
               <div>
-                <label className="text-xs text-slate-400 mb-1 block">Turbo Mode</label>
+                <label className="text-xs text-slate-400 mb-1 block">Speed Mode</label>
                 <Button 
                   variant={turboMode ? 'default' : 'outline'} 
-                  className={`w-full ${turboMode ? 'bg-amber-500' : ''}`}
+                  className={`w-full h-10 ${turboMode ? 'bg-amber-500 hover:bg-amber-600' : ''}`}
                   onClick={() => setTurboMode(!turboMode)} 
                   disabled={isRunning}
                 >
-                  {turboMode ? '⚡ Turbo Enabled' : '🐢 Normal Mode'}
+                  {turboMode ? <><Zap className="w-4 h-4 mr-1" /> Turbo</> : <><Clock className="w-4 h-4 mr-1" /> Normal</>}
                 </Button>
               </div>
             </div>
@@ -1898,7 +1740,6 @@ export default function RamzfxSpeedBot() {
                       value={martingaleMultiplier} 
                       onChange={e => setMartingaleMultiplier(e.target.value)} 
                       className="w-24 h-8 text-sm bg-slate-800/50"
-                      placeholder="x"
                       disabled={isRunning}
                     />
                   </div>
@@ -1911,7 +1752,6 @@ export default function RamzfxSpeedBot() {
                       value={martingaleMaxSteps} 
                       onChange={e => setMartingaleMaxSteps(e.target.value)} 
                       className="w-20 h-8 text-sm bg-slate-800/50"
-                      placeholder="steps"
                       disabled={isRunning}
                     />
                   </div>
@@ -1923,7 +1763,7 @@ export default function RamzfxSpeedBot() {
           {/* Start/Stop Button */}
           <button
             onClick={isRunning ? stopBot : startBot}
-            disabled={(!isRunning && (!isAuthorized || localBalance < parseFloat(stake) || (!isConnected && !isRunning)))}
+            disabled={(!isRunning && (balance < parseFloat(stake) || !isConnected))}
             className={`relative w-full h-14 text-base font-bold rounded-xl transition-all mb-6 ${
               isRunning 
                 ? 'bg-gradient-to-r from-rose-600 to-red-500 hover:from-rose-700 hover:to-red-600' 
@@ -1942,7 +1782,9 @@ export default function RamzfxSpeedBot() {
           {/* Live Statistics */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
             <div className="bg-gradient-to-br from-slate-900/90 to-slate-900/50 backdrop-blur-sm border border-blue-500/30 rounded-xl p-4">
-              <h3 className="text-sm font-semibold text-blue-400 mb-3">Bot Status</h3>
+              <h3 className="text-sm font-semibold text-blue-400 mb-3 flex items-center gap-2">
+                <Gauge className="w-4 h-4" /> Bot Status
+              </h3>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div>
                   <div className="text-xs text-slate-400 mb-1">Current Status</div>
@@ -1966,7 +1808,9 @@ export default function RamzfxSpeedBot() {
             </div>
             
             <div className="bg-gradient-to-br from-slate-900/90 to-slate-900/50 backdrop-blur-sm border border-purple-500/30 rounded-xl p-4">
-              <h3 className="text-sm font-semibold text-purple-400 mb-3">Performance</h3>
+              <h3 className="text-sm font-semibold text-purple-400 mb-3 flex items-center gap-2">
+                <Trophy className="w-4 h-4" /> Performance
+              </h3>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div>
                   <div className="text-xs text-slate-400 mb-1">Win Rate</div>
@@ -1980,7 +1824,7 @@ export default function RamzfxSpeedBot() {
                 </div>
                 <div>
                   <div className="text-xs text-slate-400 mb-1">Balance</div>
-                  <div className="text-lg font-bold text-blue-400">${localBalance.toFixed(2)}</div>
+                  <div className="text-lg font-bold text-blue-400">${balance.toFixed(2)}</div>
                 </div>
                 <div>
                   <div className="text-xs text-slate-400 mb-1">Wins / Losses</div>
@@ -1996,9 +1840,9 @@ export default function RamzfxSpeedBot() {
           <div className="bg-gradient-to-br from-slate-900/90 to-slate-900/50 backdrop-blur-sm border border-indigo-500/30 rounded-xl overflow-hidden">
             <div className="px-3 py-2 border-b border-indigo-500/30 flex items-center justify-between bg-slate-800/20">
               <h3 className="text-xs font-semibold flex items-center gap-1.5 text-indigo-400">
-                <RefreshCw className="w-3 h-3" /> Trading Activity Log
+                <Activity className="w-3 h-3" /> Trading Activity Log
               </h3>
-              <Button variant="ghost" size="sm" onClick={clearLog} className="text-[10px] h-6 px-2">
+              <Button variant="ghost" size="sm" onClick={clearLog} className="text-[10px] h-6 px-2 text-slate-400 hover:text-rose-400">
                 <Trash2 className="w-2.5 h-2.5 mr-1" /> Clear
               </Button>
             </div>
@@ -2009,12 +1853,12 @@ export default function RamzfxSpeedBot() {
                   <tr>
                     <th className="text-left p-1.5 font-medium w-[60px]">Time</th>
                     <th className="text-left p-1.5 font-medium w-[45px]">Mkt</th>
-                    <th className="text-left p-1.5 font-medium w-[60px]">Sym</th>
-                    <th className="text-left p-1.5 font-medium w-[40px]">Type</th>
+                    <th className="text-left p-1.5 font-medium w-[50px]">Sym</th>
+                    <th className="text-left p-1.5 font-medium w-[35px]">Type</th>
                     <th className="text-right p-1.5 font-medium w-[55px]">Stake</th>
                     <th className="text-center p-1.5 font-medium w-[45px]">Digit</th>
-                    <th className="text-center p-1.5 font-medium w-[50px]">Result</th>
-                    <th className="text-right p-1.5 font-medium w-[50px]">P/L</th>
+                    <th className="text-center p-1.5 font-medium w-[55px]">Result</th>
+                    <th className="text-right p-1.5 font-medium w-[55px]">P/L</th>
                     <th className="text-left p-1.5 font-medium">Info</th>
                   </tr>
                 </thead>
@@ -2029,7 +1873,7 @@ export default function RamzfxSpeedBot() {
                     logEntries.map(e => (
                       <tr key={e.id} className={`border-b border-slate-800/30 hover:bg-slate-800/20 transition-colors ${
                         e.market === 'M1' ? 'border-l-2 border-l-blue-500' : 
-                        e.market === 'VH' ? 'border-l-2 border-l-indigo-500' : 
+                        e.market === 'VH' ? 'border-l-2 border-l-cyan-500' : 
                         e.market === 'COMBINED' ? 'border-l-2 border-l-green-500' : 
                         e.market === 'SYSTEM' ? 'border-l-2 border-l-amber-500' :
                         'border-l-2 border-l-purple-500'
@@ -2037,7 +1881,7 @@ export default function RamzfxSpeedBot() {
                         <td className="p-1.5 font-mono text-[9px] text-slate-300 whitespace-nowrap">{e.time}</td>
                         <td className={`p-1.5 font-bold text-[10px] ${
                           e.market === 'M1' ? 'text-blue-400' : 
-                          e.market === 'VH' ? 'text-indigo-400' : 
+                          e.market === 'VH' ? 'text-cyan-400' : 
                           e.market === 'COMBINED' ? 'text-green-400' : 
                           e.market === 'SYSTEM' ? 'text-amber-400' :
                           'text-purple-400'
@@ -2049,17 +1893,23 @@ export default function RamzfxSpeedBot() {
                         <td className="p-1.5 text-right font-mono text-[9px]">
                           {e.market === 'VH' ? (
                             <span className="text-slate-500">VIRTUAL</span>
-                          ) : (
+                          ) : e.stake > 0 ? (
                             <span className="text-amber-400 font-medium">${e.stake.toFixed(2)}</span>
+                          ) : (
+                            <span className="text-slate-500">-</span>
                           )}
                         </td>
                         <td className="p-1.5 text-center font-mono font-bold text-[11px] text-slate-200">{e.exitDigit}</td>
                         <td className="p-1.5 text-center">
                           <span className={`px-1.5 py-0.5 rounded text-[9px] font-medium ${
-                            e.result === 'Win' || e.result === 'V-Win' 
+                            e.result === 'Win' 
                               ? 'bg-emerald-500/20 text-emerald-400' 
-                              : e.result === 'Loss' || e.result === 'V-Loss' 
+                              : e.result === 'V-Win'
+                              ? 'bg-emerald-500/20 text-emerald-400'
+                              : e.result === 'Loss' 
                               ? 'bg-rose-500/20 text-rose-400' 
+                              : e.result === 'V-Loss'
+                              ? 'bg-rose-500/20 text-rose-400'
                               : 'bg-yellow-500/20 text-yellow-500'
                           }`}>
                             {e.result === 'Pending' ? '...' : e.result === 'V-Win' ? '✓ V-Win' : e.result === 'V-Loss' ? '✗ V-Loss' : e.result}
@@ -2070,7 +1920,7 @@ export default function RamzfxSpeedBot() {
                         }`}>
                           {e.result === 'Pending' ? '...' : `${e.pnl > 0 ? '+' : ''}${e.pnl.toFixed(2)}`}
                         </td>
-                        <td className="p-1.5 text-[9px] text-slate-400 max-w-[200px] truncate" title={e.switchInfo}>
+                        <td className="p-1.5 text-[9px] text-slate-400 max-w-[250px] truncate" title={e.switchInfo}>
                           {e.switchInfo || '—'}
                         </td>
                       </tr>
@@ -2084,4 +1934,4 @@ export default function RamzfxSpeedBot() {
       </div>
     </>
   );
-   }
+}
