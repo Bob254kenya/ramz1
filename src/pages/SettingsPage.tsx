@@ -1394,49 +1394,49 @@ export default function RamzfxSpeedBot() {
             </div>
           </div>
           
-          {/* Activity Log */}
+          {/* Activity Log - REDUCED FONT SIZE & IMPROVED STYLING */}
           <div className="bg-gradient-to-br from-slate-900/90 to-slate-900/50 backdrop-blur-sm border border-indigo-500/30 rounded-xl overflow-hidden">
-            <div className="px-4 py-3 border-b border-indigo-500/30 flex items-center justify-between bg-slate-800/20">
-              <h3 className="text-sm font-semibold flex items-center gap-2 text-indigo-400">
-                <RefreshCw className="w-4 h-4" /> Trading Activity Log
+            <div className="px-3 py-2 border-b border-indigo-500/30 flex items-center justify-between bg-slate-800/20">
+              <h3 className="text-xs font-semibold flex items-center gap-1.5 text-indigo-400">
+                <RefreshCw className="w-3 h-3" /> Trading Activity Log
               </h3>
-              <Button variant="ghost" size="sm" onClick={clearLog} className="text-xs">
-                <Trash2 className="w-3.5 h-3.5 mr-1" /> Clear
+              <Button variant="ghost" size="sm" onClick={clearLog} className="text-[10px] h-6 px-2">
+                <Trash2 className="w-2.5 h-2.5 mr-1" /> Clear
               </Button>
             </div>
             
-            <div className="max-h-96 overflow-auto">
-              <table className="w-full text-sm">
-                <thead className="text-xs text-slate-400 bg-slate-800/30 sticky top-0">
+            <div className="max-h-96 overflow-auto text-[10px]">
+              <table className="w-full text-[10px]">
+                <thead className="text-[9px] text-slate-400 bg-slate-800/30 sticky top-0">
                   <tr>
-                    <th className="text-left p-3">Time</th>
-                    <th className="text-left p-3">Market</th>
-                    <th className="text-left p-3">Symbol</th>
-                    <th className="text-left p-3">Type</th>
-                    <th className="text-right p-3">Stake</th>
-                    <th className="text-center p-3">Exit Digit</th>
-                    <th className="text-center p-3">Result</th>
-                    <th className="text-right p-3">P/L</th>
-                    <th className="text-left p-3">Info</th>
+                    <th className="text-left p-1.5 font-medium w-[60px]">Time</th>
+                    <th className="text-left p-1.5 font-medium w-[45px]">Mkt</th>
+                    <th className="text-left p-1.5 font-medium w-[60px]">Sym</th>
+                    <th className="text-left p-1.5 font-medium w-[40px]">Type</th>
+                    <th className="text-right p-1.5 font-medium w-[55px]">Stake</th>
+                    <th className="text-center p-1.5 font-medium w-[45px]">Digit</th>
+                    <th className="text-center p-1.5 font-medium w-[50px]">Result</th>
+                    <th className="text-right p-1.5 font-medium w-[50px]">P/L</th>
+                    <th className="text-left p-1.5 font-medium">Info</th>
                   </tr>
                 </thead>
                 <tbody>
                   {logEntries.length === 0 ? (
                     <tr>
-                      <td colSpan={9} className="text-center text-slate-500 py-12">
+                      <td colSpan={9} className="text-center text-slate-500 py-8 text-[10px]">
                         No trading activity yet. Start the bot to begin trading.
                       </td>
                     </tr>
                   ) : (
                     logEntries.map(e => (
-                      <tr key={e.id} className={`border-b border-slate-800/50 hover:bg-slate-800/30 transition-colors ${
-                        e.market === 'M1' ? 'border-l-4 border-l-blue-500' : 
-                        e.market === 'VH' ? 'border-l-4 border-l-indigo-500' : 
-                        e.market === 'COMBINED' ? 'border-l-4 border-l-green-500' : 
-                        'border-l-4 border-l-purple-500'
+                      <tr key={e.id} className={`border-b border-slate-800/30 hover:bg-slate-800/20 transition-colors ${
+                        e.market === 'M1' ? 'border-l-2 border-l-blue-500' : 
+                        e.market === 'VH' ? 'border-l-2 border-l-indigo-500' : 
+                        e.market === 'COMBINED' ? 'border-l-2 border-l-green-500' : 
+                        'border-l-2 border-l-purple-500'
                       }`}>
-                        <td className="p-3 font-mono text-xs">{e.time}</td>
-                        <td className={`p-3 font-bold text-sm ${
+                        <td className="p-1.5 font-mono text-[9px] text-slate-300 whitespace-nowrap">{e.time}</td>
+                        <td className={`p-1.5 font-bold text-[10px] ${
                           e.market === 'M1' ? 'text-blue-400' : 
                           e.market === 'VH' ? 'text-indigo-400' : 
                           e.market === 'COMBINED' ? 'text-green-400' : 
@@ -1444,14 +1444,18 @@ export default function RamzfxSpeedBot() {
                         }`}>
                           {e.market}
                         </td>
-                        <td className="p-3 font-mono text-sm">{e.symbol}</td>
-                        <td className="p-3 text-xs">{e.contract.replace('DIGIT', '')}</td>
-                        <td className="p-3 text-right font-mono">
-                          {e.market === 'VH' ? 'VIRTUAL' : <span className="text-amber-400">${e.stake.toFixed(2)}</span>}
+                        <td className="p-1.5 font-mono text-[9px] text-slate-300">{e.symbol}</td>
+                        <td className="p-1.5 text-[9px] text-slate-400">{e.contract.replace('DIGIT', '')}</td>
+                        <td className="p-1.5 text-right font-mono text-[9px]">
+                          {e.market === 'VH' ? (
+                            <span className="text-slate-500">VIRTUAL</span>
+                          ) : (
+                            <span className="text-amber-400 font-medium">${e.stake.toFixed(2)}</span>
+                          )}
                         </td>
-                        <td className="p-3 text-center font-mono font-bold text-lg">{e.exitDigit}</td>
-                        <td className="p-3 text-center">
-                          <span className={`px-2 py-1 rounded text-xs font-medium ${
+                        <td className="p-1.5 text-center font-mono font-bold text-[11px] text-slate-200">{e.exitDigit}</td>
+                        <td className="p-1.5 text-center">
+                          <span className={`px-1.5 py-0.5 rounded text-[9px] font-medium ${
                             e.result === 'Win' || e.result === 'V-Win' 
                               ? 'bg-emerald-500/20 text-emerald-400' 
                               : e.result === 'Loss' || e.result === 'V-Loss' 
@@ -1461,13 +1465,13 @@ export default function RamzfxSpeedBot() {
                             {e.result === 'Pending' ? '...' : e.result === 'V-Win' ? '✓ V-Win' : e.result === 'V-Loss' ? '✗ V-Loss' : e.result}
                           </span>
                         </td>
-                        <td className={`p-3 text-right font-bold text-sm ${
-                          e.pnl > 0 ? 'text-emerald-400' : e.pnl < 0 ? 'text-rose-400' : 'text-slate-400'
+                        <td className={`p-1.5 text-right font-bold text-[10px] ${
+                          e.pnl > 0 ? 'text-emerald-400' : e.pnl < 0 ? 'text-rose-400' : 'text-slate-500'
                         }`}>
                           {e.result === 'Pending' ? '...' : `${e.pnl > 0 ? '+' : ''}${e.pnl.toFixed(2)}`}
                         </td>
-                        <td className="p-3 text-xs text-slate-400 max-w-xs truncate" title={e.switchInfo}>
-                          {e.switchInfo}
+                        <td className="p-1.5 text-[9px] text-slate-400 max-w-[200px] truncate" title={e.switchInfo}>
+                          {e.switchInfo || '—'}
                         </td>
                       </tr>
                     ))
@@ -1480,4 +1484,4 @@ export default function RamzfxSpeedBot() {
       </div>
     </>
   );
-   }
+  }
