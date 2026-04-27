@@ -290,10 +290,49 @@ export default function RamzfxSpeedBot() {
   
   // Tick storage
   const tickMapRef = useRef<Map<string, number[]>>(new Map());
+  const patternCheckIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const [tickCounts, setTickCounts] = useState<Record<string, number>>({});
   
   // Connection
   const [isConnected, setIsConnected] = useState(derivApi.isConnected);
+  
+  // ========== TICK COLLECTION EFFECT ==========
+  useEffect(() => {
+    if (!derivApi.isConnected) return;
+    
+    const handleTick = (data: any) => {
+      if (data.tick && data.tick.symbol) {
+        const symbol = data.tick.symbol;
+        const digit = getLastDigit(data.tick.quote);
+        
+        // Update tick map
+        if (!tickMapRef.current.has(symbol)) {
+          tickMapRef.current.set(symbol, []);
+        }
+        const ticks = tickMapRef.current.get(symbol)!;
+        ticks.push(digit);
+        // Keep last 1000 ticks per symbol
+        while (ticks.length > 1000) ticks.shift();
+        
+        // Update tick counts for UI
+        setTickCounts(prev => ({
+          ...prev,
+          [symbol]: (prev[symbol] || 0) + 1
+        }));
+      }
+    };
+    
+    const unsubscribe = derivApi.onMessage(handleTick);
+    return () => unsubscribe();
+  }, [derivApi.isConnected]);
+  
+  // ========== CONNECTION MONITORING ==========
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setIsConnected(derivApi.isConnected);
+    }, 3000);
+    return () => clearInterval(interval);
+  }, []);
   
   // ========== HELPERS ==========
   const addLog = useCallback((entry: Omit<LogEntry, 'id'>) => {
@@ -332,7 +371,7 @@ export default function RamzfxSpeedBot() {
     }
   }, []);
   
-  // ========== STRATEGY CHECKING (Non-blocking) ==========
+  // ========== STRATEGY CHECKING ==========
   const cleanM1Pattern = m1Pattern.toUpperCase().replace(/[^EO]/g, '');
   const m1PatternValid = cleanM1Pattern.length >= 2;
   const cleanM2Pattern = m2Pattern.toUpperCase().replace(/[^EO]/g, '');
@@ -374,21 +413,74 @@ export default function RamzfxSpeedBot() {
     return checkCombinedPattern(digits, patterns);
   }, []);
   
-  // Non-blocking pattern wait with proper cancellation
+  // IMPROVED: Pattern waiting with tick-based checking
   const waitForPattern = useCallback(async (
     symbol: string,
     checkFn: () => boolean,
     timeoutMs: number = 30000
   ): Promise<boolean> => {
     const startTime = Date.now();
-    while (runningRef.current && !shouldStopRef.current && (Date.now() - startTime) < timeoutMs) {
-      if (checkFn()) {
-        return true;
-      }
-      await delay(turboMode ? 50 : 100);
-    }
-    return false;
-  }, [turboMode]);
+    
+    // Check immediately
+    if (checkFn()) return true;
+    
+    // Wait for ticks to come in and check on each tick
+    return new Promise((resolve) => {
+      let timeoutId: NodeJS.Timeout;
+      let unsubscribe: (() => void) | null = null;
+      
+      const cleanup = () => {
+        if (timeoutId) clearTimeout(timeoutId);
+        if (unsubscribe) unsubscribe();
+      };
+      
+      const check = () => {
+        if (!runningRef.current || shouldStopRef.current) {
+          cleanup();
+          resolve(false);
+          return;
+        }
+        
+        if (checkFn()) {
+          cleanup();
+          resolve(true);
+        }
+      };
+      
+      // Check on each tick
+      unsubscribe = derivApi.onMessage((data: any) => {
+        if (data.tick && data.tick.symbol === symbol) {
+          check();
+        }
+      });
+      
+      // Also check on an interval for safety
+      const intervalId = setInterval(check, 100);
+      
+      // Timeout
+      timeoutId = setTimeout(() => {
+        cleanup();
+        clearInterval(intervalId);
+        resolve(false);
+      }, timeoutMs);
+      
+      // Store interval ID for cleanup
+      const originalCleanup = cleanup;
+      const newCleanup = () => {
+        clearInterval(intervalId);
+        originalCleanup();
+      };
+      
+      // Override cleanup
+      const cleanupWithInterval = () => {
+        clearInterval(intervalId);
+        cleanup();
+      };
+      
+      // Use a wrapper to handle the interval
+      (check as any)._intervalId = intervalId;
+    });
+  }, []);
   
   // ========== EXECUTE REAL TRADE ==========
   const executeRealTrade = useCallback(async (
@@ -508,6 +600,7 @@ export default function RamzfxSpeedBot() {
       };
       if (needsBarrier(cfg.contract)) buyParams.barrier = cfg.barrier;
       
+      console.log('Executing trade:', buyParams);
       const buyResponse = await derivApi.buyContract(buyParams);
       
       // Check if purchase was successful
@@ -776,6 +869,20 @@ export default function RamzfxSpeedBot() {
       // Combined strategy check (highest priority)
       if (combinedActive && combinedPatterns.trim() !== '') {
         setBotStatus('waiting_pattern');
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          market: 'COMBINED',
+          symbol: tradeSymbol,
+          contract: cfg.contract,
+          stake: 0,
+          martingaleStep: 0,
+          exitDigit: '-',
+          result: 'Pending',
+          pnl: 0,
+          balance: currentBalance,
+          switchInfo: `🔍 Waiting for combined pattern: ${combinedPatterns}`,
+        });
+        
         const matched = await waitForPattern(tradeSymbol, () => checkCombinedForSymbol(tradeSymbol, combinedPatterns), 30000);
         
         if (matched && runningRef.current && !shouldStopRef.current) {
@@ -797,6 +904,19 @@ export default function RamzfxSpeedBot() {
           combinedTradeTakenRef.current = true;
           patternMatched = true;
         } else if (!matched) {
+          addLog({
+            time: new Date().toLocaleTimeString(),
+            market: 'COMBINED',
+            symbol: tradeSymbol,
+            contract: cfg.contract,
+            stake: 0,
+            martingaleStep: 0,
+            exitDigit: '-',
+            result: 'Pending',
+            pnl: 0,
+            balance: currentBalance,
+            switchInfo: `⏰ Combined pattern timeout, continuing...`,
+          });
           continue;
         }
       }
@@ -805,28 +925,73 @@ export default function RamzfxSpeedBot() {
       if (!patternMatched && strategyActive) {
         setBotStatus('waiting_pattern');
         let checkFn: () => boolean;
+        let strategyDesc = '';
         
         if (mkt === 1) {
           if (m1StrategyMode === 'pattern') {
             checkFn = () => checkPatternMatch(tradeSymbol, cleanM1Pattern);
+            strategyDesc = `Pattern: ${cleanM1Pattern}`;
           } else {
             checkFn = () => checkDigitCondition(tradeSymbol, m1DigitCondition, m1DigitCompare, m1DigitWindow);
+            strategyDesc = `Digit condition: ${m1DigitCondition} ${m1DigitCompare} over ${m1DigitWindow} ticks`;
           }
         } else {
           if (m2StrategyMode === 'pattern') {
             checkFn = () => checkPatternMatch(tradeSymbol, cleanM2Pattern);
+            strategyDesc = `Pattern: ${cleanM2Pattern}`;
           } else {
             checkFn = () => checkDigitCondition(tradeSymbol, m2DigitCondition, m2DigitCompare, m2DigitWindow);
+            strategyDesc = `Digit condition: ${m2DigitCondition} ${m2DigitCompare} over ${m2DigitWindow} ticks`;
           }
         }
+        
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          market: mkt === 1 ? 'M1' : 'M2',
+          symbol: tradeSymbol,
+          contract: cfg.contract,
+          stake: 0,
+          martingaleStep: mStep,
+          exitDigit: '-',
+          result: 'Pending',
+          pnl: 0,
+          balance: currentBalance,
+          switchInfo: `🔍 Waiting for strategy: ${strategyDesc}`,
+        });
         
         const matched = await waitForPattern(tradeSymbol, checkFn, 30000);
         
         if (matched && runningRef.current && !shouldStopRef.current) {
           setBotStatus('pattern_matched');
+          addLog({
+            time: new Date().toLocaleTimeString(),
+            market: mkt === 1 ? 'M1' : 'M2',
+            symbol: tradeSymbol,
+            contract: cfg.contract,
+            stake: 0,
+            martingaleStep: mStep,
+            exitDigit: '-',
+            result: 'Pending',
+            pnl: 0,
+            balance: currentBalance,
+            switchInfo: `✅ Strategy matched! Executing trade...`,
+          });
           await delay(turboMode ? 100 : 300);
           patternTradeTakenRef.current = true;
         } else if (!matched) {
+          addLog({
+            time: new Date().toLocaleTimeString(),
+            market: mkt === 1 ? 'M1' : 'M2',
+            symbol: tradeSymbol,
+            contract: cfg.contract,
+            stake: 0,
+            martingaleStep: mStep,
+            exitDigit: '-',
+            result: 'Pending',
+            pnl: 0,
+            balance: currentBalance,
+            switchInfo: `⏰ Strategy timeout, continuing...`,
+          });
           continue;
         }
       }
@@ -840,6 +1005,20 @@ export default function RamzfxSpeedBot() {
         setVhConsecLosses(0);
         let consecLosses = 0;
         let virtualNum = 0;
+        
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          market: 'VH',
+          symbol: tradeSymbol,
+          contract: cfg.contract,
+          stake: 0,
+          martingaleStep: mStep,
+          exitDigit: '-',
+          result: 'Pending',
+          pnl: 0,
+          balance: currentBalance,
+          switchInfo: `🎣 Starting Virtual Hook: Need ${requiredLosses} consecutive losses before ${realCount} real trades`,
+        });
         
         while (consecLosses < requiredLosses && runningRef.current && !shouldStopRef.current) {
           virtualNum++;
@@ -881,6 +1060,20 @@ export default function RamzfxSpeedBot() {
         if (!runningRef.current || shouldStopRef.current) break;
         setVhStatus('confirmed');
         
+        addLog({
+          time: new Date().toLocaleTimeString(),
+          market: 'VH',
+          symbol: tradeSymbol,
+          contract: cfg.contract,
+          stake: 0,
+          martingaleStep: mStep,
+          exitDigit: '-',
+          result: 'Pending',
+          pnl: 0,
+          balance: currentBalance,
+          switchInfo: `✅ Virtual Hook complete! Executing ${realCount} real trade(s)...`,
+        });
+        
         for (let ri = 0; ri < realCount && runningRef.current && !shouldStopRef.current; ri++) {
           const result = await executeRealTrade(cfg, tradeSymbol, cStake, mStep, mkt, currentBalance, currentPnl, baseStake);
           if (!result.contractExecuted) continue;
@@ -906,6 +1099,20 @@ export default function RamzfxSpeedBot() {
       }
       
       // Normal trade execution
+      addLog({
+        time: new Date().toLocaleTimeString(),
+        market: mkt === 1 ? 'M1' : 'M2',
+        symbol: tradeSymbol,
+        contract: cfg.contract,
+        stake: cStake,
+        martingaleStep: mStep,
+        exitDigit: '...',
+        result: 'Pending',
+        pnl: 0,
+        balance: currentBalance,
+        switchInfo: `💰 Executing trade on ${mkt === 1 ? 'M1' : 'M2'} with stake $${cStake.toFixed(2)}`,
+      });
+      
       const result = await executeRealTrade(cfg, tradeSymbol, cStake, mStep, mkt, currentBalance, currentPnl, baseStake);
       if (!result.contractExecuted) continue;
       
@@ -1705,4 +1912,4 @@ export default function RamzfxSpeedBot() {
       </div>
     </>
   );
-}
+      }
